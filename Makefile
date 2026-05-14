@@ -26,12 +26,6 @@ MANDIR=         ${LOCALBASE}/share/man/man
 
 DIRS+=          ${LOCALBASE}/lib/pkg
 DIRS+=          ${LOCALBASE}/share/man/man8
-DIRS+=          ${LOCALBASE}/etc/pkg
-
-FILESGROUPS+=   CONF
-CONF=           be.conf
-CONFDIR=        ${LOCALBASE}/etc/pkg
-CONFMODE=       644
 
 # Files to clean beyond bsd.lib.mk's defaults
 CLEANFILES+=    *.pico *.pieo *.so *.so.debug *.so.full
