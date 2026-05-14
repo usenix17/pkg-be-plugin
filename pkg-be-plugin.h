@@ -47,6 +47,12 @@ struct be_config {
 	bool		skip_install;	/* \                                    */
 	bool		skip_upgrade;	/*  > derived from BE_PLUGIN_SKIP_TRANSACTIONS */
 	bool		skip_deinstall;	/* /                                    */
+	/*
+	 * BE_PLUGIN_REPOSITORIES: comma-separated list of repository names that
+	 * trigger BE creation.  Empty string means "any transaction" (no filter).
+	 * The special token "local" matches packages with no repository (pkg add).
+	 */
+	char		repositories[512];
 };
 
 /*

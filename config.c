@@ -63,6 +63,7 @@
 #define	DEFAULT_MIN_AGE		"7d"
 #define	DEFAULT_STRICT		"false"
 #define	DEFAULT_SKIP		""
+#define	DEFAULT_REPOSITORIES	""
 
 /*
  * parse_duration -- convert a duration string to seconds.
@@ -211,6 +212,9 @@ config_register_keys(struct pkg_plugin *p)
 	if (pkg_plugin_conf_add(p, PKG_STRING, "BE_PLUGIN_SKIP_TRANSACTIONS",
 	    DEFAULT_SKIP) != EPKG_OK)
 		goto fail;
+	if (pkg_plugin_conf_add(p, PKG_STRING, "BE_PLUGIN_REPOSITORIES",
+	    DEFAULT_REPOSITORIES) != EPKG_OK)
+		goto fail;
 
 	return (EPKG_OK);
 
@@ -260,6 +264,7 @@ config_load(struct pkg_plugin *p, struct be_config *cfg)
 	}
 
 	parse_skip_transactions(DEFAULT_SKIP, cfg);
+	cfg->repositories[0] = '\0';
 
 	conf = pkg_plugin_conf(p);
 	if (conf == NULL) {
@@ -319,6 +324,12 @@ config_load(struct pkg_plugin *p, struct be_config *cfg)
 		} else if (strcmp(key, "BE_PLUGIN_SKIP_TRANSACTIONS") == 0) {
 			val = pkg_object_string(obj);
 			parse_skip_transactions(val != NULL ? val : "", cfg);
+
+		} else if (strcmp(key, "BE_PLUGIN_REPOSITORIES") == 0) {
+			val = pkg_object_string(obj);
+			if (val != NULL)
+				(void)strlcpy(cfg->repositories, val,
+				    sizeof(cfg->repositories));
 		}
 	}
 

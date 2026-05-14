@@ -45,6 +45,7 @@
 #include <time.h>
 #include <syslog.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "be_compat.h"
 #include <pkg.h>
@@ -99,6 +100,68 @@ generate_be_name(const char *prefix, char *buf, size_t bufsz)
 	    prefix,
 	    tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 	    tm.tm_hour, tm.tm_min, tm.tm_sec);
+}
+
+/*
+ * repo_matches -- return true if any package in the job set originates from
+ * a repository named in the comma-separated filter string.
+ *
+ * Comparison is case-sensitive; token whitespace is stripped.  The special
+ * token "local" matches packages with no repository (installed via pkg add).
+ * If filter is empty or NULL, every transaction matches (no filtering).
+ */
+static bool
+repo_matches(struct pkg_jobs *jobs, const char *filter)
+{
+	struct pkg	*new_pkg, *old_pkg;
+	void		*iter;
+	int		 jtype;
+	const char	*reponame;
+	char		 buf[512], *p, *token;
+	bool		 matched;
+
+	if (filter == NULL || *filter == '\0')
+		return (true);
+
+	iter = NULL;
+	while (pkg_jobs_iter(jobs, &iter, &new_pkg, &old_pkg, &jtype)) {
+		struct pkg *pkg = new_pkg != NULL ? new_pkg : old_pkg;
+
+		if (pkg == NULL)
+			continue;
+
+		reponame = NULL;
+		pkg_get(pkg, PKG_ATTR_REPONAME, &reponame);
+
+		/*
+		 * Work through the filter list for this package.  We re-parse
+		 * the filter string for each package; it is short and this path
+		 * runs once per transaction.
+		 */
+		(void)strlcpy(buf, filter, sizeof(buf));
+		p = buf;
+		matched = false;
+		while ((token = strsep(&p, ",")) != NULL && !matched) {
+			while (*token == ' ' || *token == '\t')
+				token++;
+			if (*token == '\0')
+				continue;
+
+			if (strcmp(token, "local") == 0) {
+				if (reponame == NULL || *reponame == '\0')
+					matched = true;
+			} else {
+				if (reponame != NULL &&
+				    strcmp(reponame, token) == 0)
+					matched = true;
+			}
+		}
+
+		if (matched)
+			return (true);
+	}
+
+	return (false);
 }
 
 /*
@@ -158,6 +221,13 @@ be_hook(void *data, struct pkgdb *db)
 		    "unhandled jobs type %d, skipping", (int)type);
 		return (EPKG_OK);
 	}
+
+	/*
+	 * Repository filter: if BE_PLUGIN_REPOSITORIES is set, skip the
+	 * transaction unless at least one package comes from a listed repo.
+	 */
+	if (!repo_matches(jobs, g_config.repositories))
+		return (EPKG_OK);
 
 	generate_be_name(g_config.prefix, be_name, sizeof(be_name));
 
@@ -257,7 +327,7 @@ pkg_plugin_init(struct pkg_plugin *p)
 	pkg_plugin_set(p, PKG_PLUGIN_NAME, "be");
 	pkg_plugin_set(p, PKG_PLUGIN_DESC,
 	    "Automatically create ZFS boot environments before pkg transactions");
-	pkg_plugin_set(p, PKG_PLUGIN_VERSION, "1.0.0");
+	pkg_plugin_set(p, PKG_PLUGIN_VERSION, "0.4.0");
 
 	if (config_register_keys(p) != EPKG_OK)
 		return (EPKG_FATAL);

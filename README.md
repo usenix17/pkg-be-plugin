@@ -51,11 +51,12 @@ file is not an error; all keys have compiled-in defaults.
 | `BE_PLUGIN_MIN_AGE` | duration | `7d` | Minimum age before a BE is eligible for pruning |
 | `BE_PLUGIN_STRICT` | bool | `false` | Abort the transaction if BE creation fails |
 | `BE_PLUGIN_SKIP_TRANSACTIONS` | string | `` | Comma-separated list of transaction types to skip: `install`, `upgrade`, `deinstall` |
+| `BE_PLUGIN_REPOSITORIES` | string | `` | Comma-separated list of repository names that trigger BE creation. Empty = all transactions. Use `local` to match packages installed via `pkg add` |
 
 Duration values accept a bare integer or an integer with a suffix:
 `d` (days), `h` (hours), `m` (minutes), `s` (seconds).  `0` disables the restriction.
 
-Example `be.conf`:
+Example `be.conf` scoped to base system updates only:
 
 ```ucl
 BE_PLUGIN_ENABLED = true;
@@ -63,7 +64,11 @@ BE_PLUGIN_KEEP = 10;
 BE_PLUGIN_MIN_AGE = "14d";
 BE_PLUGIN_STRICT = false;
 BE_PLUGIN_SKIP_TRANSACTIONS = "deinstall";
+BE_PLUGIN_REPOSITORIES = "FreeBSD-base";
 ```
+
+To create BEs for all transactions (the default), omit `BE_PLUGIN_REPOSITORIES`
+or leave it empty.
 
 ## Rolling back
 
