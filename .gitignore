@@ -1,0 +1,27 @@
+# Build artifacts
+*.o
+*.so
+*.so.debug
+*.so.full
+*.pico
+*.pieo
+
+# bmake dependency files
+.depend.*
+
+# Compiled manpages
+*.gz
+
+# Debug symbols
+*.dSYM/
+
+# Editor swap/backup files
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test artifacts
+tests/*.o
+tests/test_runner
+tests/*.tap

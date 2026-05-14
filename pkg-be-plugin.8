@@ -1,0 +1,217 @@
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\"
+.\" Copyright (c) 2026 Sasha Karcz
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+.\" STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+.\" ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+.\" POSSIBILITY OF SUCH DAMAGE.
+.\"
+.Dd May 13, 2026
+.Dt PKG-BE-PLUGIN 8
+.Os
+.Sh NAME
+.Nm pkg-be-plugin
+.Nd automatically create ZFS boot environments before pkg transactions
+.Sh SYNOPSIS
+The plugin is loaded automatically by
+.Xr pkg 8
+when
+.Pa /usr/local/lib/pkg/be.so
+exists and plugins are enabled.
+No explicit invocation is needed.
+.Sh DESCRIPTION
+.Nm
+is a
+.Xr pkg 8
+plugin that creates a ZFS boot environment immediately before each package
+install, upgrade, or deinstall transaction.
+If the transaction leaves the system in a broken state, the user can reboot
+into the pre-transaction environment to recover.
+.Pp
+The plugin calls
+.Xr libbe 3
+directly.
+It does not invoke
+.Xr bectl 8
+or
+.Xr zfs 8
+as external processes.
+.Pp
+Boot environment names have the form:
+.Pp
+.Dl Ao prefix Ac Ns - Ns Ao YYYYMMDD Ac Ns - Ns Ao HHMMSS Ac
+.Pp
+where
+.Aq prefix
+is controlled by the
+.Sy BE_PLUGIN_NAME_PREFIX
+configuration key and the timestamp is the local time at which the transaction
+began.
+For example, with the default prefix:
+.Pp
+.Dl pre-pkg-20260513-142301
+.Pp
+After creating the new boot environment, the plugin prunes older automatically
+created boot environments so that at most
+.Sy BE_PLUGIN_KEEP
+remain.
+Boot environments younger than
+.Sy BE_PLUGIN_MIN_AGE
+are never pruned regardless of count.
+.Pp
+All operations are logged to
+.Xr syslog 3
+under the
+.Sy daemon
+facility:
+.Bl -tag -width indent
+.It LOG_NOTICE
+Successful creation and each successful pruning.
+.It LOG_WARNING
+Creation failures in non-strict mode (transaction proceeds), and all
+pruning failures (pruning is always best-effort regardless of strict mode).
+.It LOG_ERR
+Creation failures in strict mode (transaction aborted).
+.El
+.Sh CONFIGURATION
+The plugin is configured by
+.Pa /usr/local/etc/pkg/be.conf ,
+a UCL file.
+A missing file is not an error; compiled-in defaults are used.
+.Pp
+To enable plugins globally, set
+.Dq Sy PLUGINS_CONF_DIR
+and
+.Dq Sy PLUGINS = [ be ]
+in
+.Xr pkg.conf 5 .
+.Pp
+Available configuration keys:
+.Bl -tag -width BE_PLUGIN_SKIP_TRANSACTIONS
+.It Sy BE_PLUGIN_ENABLED : bool (default: true)
+Master switch.
+Set to
+.Dq false
+to load the plugin but register no hooks.
+.It Sy BE_PLUGIN_KEEP : int (default: 5)
+Maximum number of automatically created boot environments to retain.
+Must be >= 1.
+Older environments beyond this limit are destroyed after each successful
+creation, subject to
+.Sy BE_PLUGIN_MIN_AGE .
+.It Sy BE_PLUGIN_NAME_PREFIX : string (default: pre-pkg)
+Prefix for generated boot environment names.
+Must not be empty.
+Truncated to 63 characters; a longer prefix will produce a name that
+.Xr libbe 3
+rejects at creation time.
+.It Sy BE_PLUGIN_MIN_AGE : duration (default: 7d)
+Minimum age a boot environment must reach before it is eligible for pruning.
+Accepted formats: a bare integer (seconds), or an integer followed by
+.Dq d
+(days),
+.Dq h
+(hours),
+.Dq m
+(minutes), or
+.Dq s
+(seconds).
+Set to
+.Dq 0
+to disable the minimum-age restriction.
+.It Sy BE_PLUGIN_STRICT : bool (default: false)
+In strict mode, a failure to create a boot environment causes the plugin to
+return
+.Dv EPKG_FATAL ,
+aborting the transaction before any packages are changed.
+In non-strict mode (the default), creation failures are logged and the
+transaction proceeds.
+.It Sy BE_PLUGIN_SKIP_TRANSACTIONS : string (default: "")
+Comma-separated list of transaction types to skip.
+Recognised tokens:
+.Dq install ,
+.Dq upgrade ,
+.Dq deinstall .
+Example:
+.Dq deinstall
+creates boot environments only for installs and upgrades.
+Unknown tokens produce a warning notice and are otherwise ignored.
+.El
+.Sh FILES
+.Bl -tag -width /usr/local/etc/pkg/be.conf
+.It Pa /usr/local/lib/pkg/be.so
+The plugin shared object.
+.It Pa /usr/local/etc/pkg/be.conf
+Plugin configuration file (UCL format).
+.El
+.Sh EXAMPLES
+Minimal
+.Pa be.conf
+to retain ten boot environments for at least 14 days:
+.Bd -literal -offset indent
+BE_PLUGIN_ENABLED = true;
+BE_PLUGIN_KEEP = 10;
+BE_PLUGIN_MIN_AGE = "14d";
+.Ed
+.Pp
+To find the boot environment created before the last upgrade and boot into it:
+.Bd -literal -offset indent
+grep "pkg-be-plugin: created" /var/log/messages | tail -1
+bectl activate pre-pkg-20260513-142301
+reboot
+.Ed
+.Pp
+The
+.Xr syslog 3
+entry written on creation always includes the exact boot environment name,
+providing a reliable audit trail for rollback.
+.Sh SEE ALSO
+.Xr libbe 3 ,
+.Xr syslog 3 ,
+.Xr pkg.conf 5 ,
+.Xr bectl 8 ,
+.Xr pkg 8
+.Sh AUTHORS
+.An Sasha Karcz
+.Sh CAVEATS
+The plugin requires the system to be running from a ZFS boot environment.
+On UFS-rooted systems or inside jails without ZFS access,
+.Fn libbe_init
+will fail.
+In non-strict mode this is logged as a warning and the transaction proceeds.
+.Pp
+The plugin opens and closes a
+.Xr libbe 3
+handle for both the creation step and the pruning step.
+Two
+.Fn libbe_init
+calls are made per transaction; this is intentional to keep error handling
+simple and is not a performance concern for typical workloads.
+.Pp
+Pruning is best-effort.
+If
+.Fn be_destroy
+fails (for example because a boot environment is currently mounted or is the
+active environment), the failure is logged and the remaining candidates are
+still considered for pruning.
+The transaction is never aborted due to a pruning failure regardless of the
+.Sy BE_PLUGIN_STRICT
+setting.
