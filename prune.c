@@ -219,8 +219,21 @@ prune_old_bes(const char *prefix, int64_t keep, time_t min_age)
 
 		/* Grow array if needed, capped at CAND_MAX_CAP. */
 		if (n_cands == cap) {
-			if (cap >= CAND_MAX_CAP)
-				continue;	/* pathological: ignore overflow */
+			if (cap >= CAND_MAX_CAP) {
+				/*
+				 * Pathological: more matching BEs than we are
+				 * willing to track.  Stop collecting and prune
+				 * what we have.  Because the array is not yet
+				 * sorted, this prunes by enumeration order rather
+				 * than strictly oldest-first, but a system with
+				 * this many BEs is already misconfigured.
+				 */
+				syslog(LOG_WARNING,
+				    "pkg-be-plugin: prune: more than %d matching "
+				    "BEs; examining only the first %d",
+				    CAND_MAX_CAP, CAND_MAX_CAP);
+				break;
+			}
 			newcap = cap * 2;
 			if (newcap > CAND_MAX_CAP)
 				newcap = CAND_MAX_CAP;
@@ -278,7 +291,17 @@ prune_old_bes(const char *prefix, int64_t keep, time_t min_age)
 			break;
 		}
 
-		if (be_destroy(hdl, cands[i].name, 0) != BE_ERR_SUCCESS) {
+		/*
+		 * BE_DESTROY_AUTOORIGIN also reclaims the origin snapshot that
+		 * be_create() left behind when it cloned this BE.  Without it
+		 * those snapshots accumulate under the active BE and consume
+		 * pool space indefinitely.  AUTOORIGIN (rather than
+		 * BE_DESTROY_ORIGIN) only removes the origin when libbe
+		 * recognises it as auto-created, so a manually cloned BE is left
+		 * untouched and the call never fails on a shared snapshot.
+		 */
+		if (be_destroy(hdl, cands[i].name, BE_DESTROY_AUTOORIGIN) !=
+		    BE_ERR_SUCCESS) {
 			syslog(LOG_WARNING,
 			    "pkg-be-plugin: prune: be_destroy(\"%s\") "
 			    "failed: %s",

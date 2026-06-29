@@ -117,12 +117,12 @@ Must be >= 1.
 Older environments beyond this limit are destroyed after each successful
 creation, subject to
 .Sy BE_PLUGIN_MIN_AGE .
+The origin snapshot created when the boot environment was cloned is reclaimed
+along with it, so pruning does not leak snapshots.
 .It Sy BE_PLUGIN_NAME_PREFIX : string (default: pre-pkg)
 Prefix for generated boot environment names.
-Must not be empty.
-Truncated to 63 characters; a longer prefix will produce a name that
-.Xr libbe 3
-rejects at creation time.
+Must not be empty and must not exceed 63 characters; a longer value is rejected
+at load time and the plugin fails to load.
 .It Sy BE_PLUGIN_MIN_AGE : duration (default: 7d)
 Minimum age a boot environment must reach before it is eligible for pruning.
 Accepted formats: a bare integer (seconds), or an integer followed by
@@ -211,8 +211,14 @@ providing a reliable audit trail for rollback.
 The plugin requires the system to be running from a ZFS boot environment.
 On UFS-rooted systems or inside jails without ZFS access,
 .Fn libbe_init
-will fail.
-In non-strict mode this is logged as a warning and the transaction proceeds.
+fails.
+This is detected once, when the plugin is loaded: the plugin emits a single
+informational message and registers no hooks, so it stays inert and does not
+affect package transactions.
+This check is independent of
+.Sy BE_PLUGIN_STRICT ;
+strict mode never aborts transactions merely because the system lacks ZFS
+boot environment support.
 .Pp
 The plugin opens and closes a
 .Xr libbe 3

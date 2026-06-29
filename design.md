@@ -47,9 +47,13 @@ The resulting `nvlist_t` contains one `nvpair_t` per BE. Each pair's name is
 the BE name; its value is an `nvlist_t` of properties. Relevant properties:
 
 - `"name"` — BE name (always present)
-- `"creation"` — `DATA_TYPE_UINT64`, Unix timestamp (may be absent)
+- `"creation"` — `DATA_TYPE_STRING`, a decimal Unix-epoch string (may be absent)
 - `"active"` — present and true if currently booted
 - `"nextboot"` — present and true if active on next boot
+
+Note: libbe(3) reports `creation` as a **string** of decimal digits (e.g.
+`"1778725572"`), not a `uint64`. Callers must use `nvlist_lookup_string()` and
+parse with `strtoll(3)`; `nvlist_lookup_uint64()` always fails on this property.
 
 Iteration pattern:
 ```c
@@ -58,8 +62,9 @@ while ((pair = nvlist_next_nvpair(be_list, pair)) != NULL) {
     const char *be_name = nvpair_name(pair);
     nvlist_t   *props;
     nvpair_value_nvlist(pair, &props);
-    uint64_t creation;
-    nvlist_lookup_uint64(props, "creation", &creation);
+    const char *creation_str;
+    nvlist_lookup_string(props, "creation", &creation_str);
+    time_t creation = (time_t)strtoll(creation_str, NULL, 10);
 }
 ```
 
@@ -73,7 +78,12 @@ typedef enum {
 
 int be_destroy(libbe_handle_t *, const char *be_name, int flags);
 ```
-We will use `BE_DESTROY_ORIGIN` to also remove the underlying snapshot.
+We use `BE_DESTROY_AUTOORIGIN` to also remove the origin snapshot that
+`be_create()` left behind when it cloned the BE; without it those snapshots
+accumulate under the active BE and consume pool space indefinitely.
+`AUTOORIGIN` is preferred over `BE_DESTROY_ORIGIN`: it removes the origin only
+when libbe recognises it as auto-created, so a manually cloned BE is left
+untouched and the call never fails on a shared snapshot.
 
 **Name utilities:**
 ```c
@@ -244,9 +254,19 @@ written once during `pkg_plugin_init()` and read-only thereafter.
 3. pkg_plugin_parse(p)           -- reads /usr/local/etc/pkg/be.conf (UCL)
 4. config_load(p, &g_config)     -- walks pkg_plugin_conf() object, fills struct
 5. if !g_config.enabled: return EPKG_OK (no hooks registered -- no-op plugin)
-6. pkg_plugin_hook_register() x3
-7. return EPKG_OK
+6. probe libbe_init(NULL): if NULL, emit one notice and return EPKG_OK
+   (no hooks registered -- inert on non-ZFS systems)
+7. pkg_plugin_hook_register() x3
+8. return EPKG_OK
 ```
+
+**Non-ZFS systems.** A single `libbe_init()` probe at load time decides whether
+the plugin is usable. On UFS roots or jails without ZFS access `libbe_init()`
+returns NULL; rather than registering hooks that then fail -- and emit a pkg
+error -- on *every* transaction (and, in strict mode, abort *every*
+transaction), the plugin emits one informational message and registers no
+hooks. The per-hook `libbe_init()` failure path is kept as defence in depth for
+a transient failure after a successful probe.
 
 If `config_load()` encounters a parse error (e.g., bad `min_age` string), it
 logs via `pkg_plugin_error()` and returns `EPKG_FATAL`. A broken config is user
@@ -300,7 +320,7 @@ be_hook(data, db):
         UPGRADE:   if g_config.skip_upgrade:   return EPKG_OK
         DEINSTALL: if g_config.skip_deinstall: return EPKG_OK
         default:
-            pkg_emit_notice("be-plugin: unhandled jobs type %d, skipping", type)
+            pkg_plugin_info(g_plugin, "unhandled jobs type %d, skipping", type)
             return EPKG_OK
 
     generate_be_name(g_config.prefix, be_name, sizeof(be_name))
@@ -317,6 +337,9 @@ be_hook(data, db):
         syslog(LOG_WARNING, "pkg-be-plugin: invalid BE name: %s", be_name)
         pkg_plugin_error(g_plugin, "invalid BE name: %s", be_name)
         error = 1; goto done
+
+    /* Append "-N" if this name was already taken this second. */
+    disambiguate_be_name(hdl, be_name, sizeof(be_name))
 
     rc = be_create(hdl, be_name)
     if rc != BE_ERR_SUCCESS:
@@ -369,6 +392,15 @@ generate_be_name(const char *prefix, char *buf, size_t bufsz)
 `BE_MAXPATHLEN` is 512 bytes; BE names are much shorter. We use a fixed 128-byte
 stack buffer. The name passes through `be_validate_name()` before `be_create()`.
 
+**Same-second collisions.** The name has one-second resolution, so two
+transactions in the same wall-clock second (scripted runs, CI) would generate
+identical names and the second `be_create()` would fail with "already exists" --
+which, in strict mode, would abort an otherwise valid transaction. After
+validating the base name, `disambiguate_be_name()` calls `be_exists()` and, if
+the name is taken, appends `-N` (N from 2) until a free name is found. The
+suffix only adds a hyphen and digits, so the result stays valid and well under
+the length cap.
+
 ---
 
 ### Config Parsing: `min_age` Duration
@@ -390,8 +422,15 @@ parse_duration(const char *s, time_t *out):
 ```
 
 `BE_PLUGIN_SKIP_TRANSACTIONS` is a comma-separated string. Parsed in `config.c`
-with `strsep()` into the three bool flags. Unknown tokens produce a warning but
-are not fatal.
+with `strsep()` into the three bool flags. Each token has leading and trailing
+whitespace stripped, so `"install, upgrade"` and `"install ,upgrade"` both work.
+Unknown tokens produce a warning but are not fatal. `BE_PLUGIN_REPOSITORIES` is
+tokenised the same way.
+
+`BE_PLUGIN_NAME_PREFIX` longer than the 63-character field is rejected with
+`EPKG_FATAL` rather than silently truncated: a truncated prefix would generate
+BE names the user never intended, and prune matching would then key off that
+surprise prefix.
 
 ---
 
@@ -422,8 +461,8 @@ prune_old_bes(prefix, keep, min_age):
                     break
                 cap *= 2; candidates = realloc(candidates, cap * sizeof(*candidates))
             nvpair_value_nvlist(pair, &props)
-            nvlist_lookup_uint64(props, "creation", &t)
-            candidates[count].creation = (time_t)t
+            nvlist_lookup_string(props, "creation", &creation_str)
+            candidates[count].creation = (time_t)strtoll(creation_str, ...)
             strlcpy(candidates[count].name, name, sizeof(candidates[count].name))
             count++
 
@@ -446,7 +485,7 @@ prune_old_bes(prefix, keep, min_age):
         if age < min_age:
             deferred++
             continue   /* respect min_age: skip even if over count */
-        rc = be_destroy(hdl, candidates[i].name, BE_DESTROY_ORIGIN)
+        rc = be_destroy(hdl, candidates[i].name, BE_DESTROY_AUTOORIGIN)
         if rc != BE_ERR_SUCCESS:
             syslog(LOG_WARNING, "pkg-be-plugin: prune: could not destroy %s",
                 candidates[i].name)
@@ -533,6 +572,11 @@ Rationale:
 
 Pruning never aborts the transaction regardless of `strict`, because pruning is
 maintenance work that happens *after* the BE is already safely created.
+
+The `libbe_init()` row above describes the *hook-time* failure path, which is
+now reached only on a transient failure: a NULL return at load time already
+leaves the plugin inert (see "Non-ZFS systems"), so on a non-ZFS host no hook
+runs and nothing is logged per transaction.
 
 **The goto-on-error pattern used in the hook handler:**
 

@@ -160,9 +160,17 @@ parse_skip_transactions(const char *s, struct be_config *cfg)
 
 	p = buf;
 	while ((token = strsep(&p, ",")) != NULL) {
-		/* Strip leading whitespace so "install, upgrade" also works. */
+		char	*end;
+
+		/*
+		 * Strip leading and trailing whitespace so that both
+		 * "install, upgrade" and "install ,upgrade" work.
+		 */
 		while (*token == ' ' || *token == '\t')
 			token++;
+		end = token + strlen(token);
+		while (end > token && (end[-1] == ' ' || end[-1] == '\t'))
+			*--end = '\0';
 
 		if (*token == '\0')
 			continue;
@@ -301,11 +309,20 @@ config_load(struct pkg_plugin *p, struct be_config *cfg)
 				return (EPKG_FATAL);
 			}
 			/*
-			 * strlcpy truncates silently; the prefix field is 64
-			 * bytes.  A longer prefix would produce an invalid BE
-			 * name that be_validate_name() will catch at hook time.
+			 * Reject an over-length prefix outright rather than
+			 * silently truncating it: a truncated prefix would
+			 * produce BE names the user never intended, and prune
+			 * matching would then key off that surprise prefix.
+			 * strlcpy() returns the length of the source string.
 			 */
-			(void)strlcpy(cfg->prefix, val, sizeof(cfg->prefix));
+			if (strlcpy(cfg->prefix, val, sizeof(cfg->prefix)) >=
+			    sizeof(cfg->prefix)) {
+				pkg_plugin_error(p,
+				    "BE_PLUGIN_NAME_PREFIX is too long "
+				    "(max %zu characters)",
+				    sizeof(cfg->prefix) - 1);
+				return (EPKG_FATAL);
+			}
 
 		} else if (strcmp(key, "BE_PLUGIN_MIN_AGE") == 0) {
 			val = pkg_object_string(obj);

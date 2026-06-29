@@ -103,6 +103,36 @@ generate_be_name(const char *prefix, char *buf, size_t bufsz)
 }
 
 /*
+ * disambiguate_be_name -- ensure buf names a BE that does not already exist.
+ *
+ * generate_be_name() has one-second resolution, so two transactions in the
+ * same wall-clock second (scripted runs, CI) would generate identical names
+ * and the second be_create() would fail with "already exists" -- which, in
+ * strict mode, aborts an otherwise valid transaction.  If the generated name
+ * is already taken, append "-N" (N from 2) until a free name is found.
+ *
+ * be_exists() returns BE_ERR_SUCCESS (0) when the BE exists.  On the unlikely
+ * event that 2..99 are all taken we leave the last candidate in place and let
+ * be_create() report the collision through the normal error path.
+ */
+static void
+disambiguate_be_name(libbe_handle_t *hdl, char *buf, size_t bufsz)
+{
+	char	base[BE_NAME_LEN];
+	int	n;
+
+	if (be_exists(hdl, buf) != BE_ERR_SUCCESS)
+		return;
+
+	(void)strlcpy(base, buf, sizeof(base));
+	for (n = 2; n < 100; n++) {
+		(void)snprintf(buf, bufsz, "%s-%d", base, n);
+		if (be_exists(hdl, buf) != BE_ERR_SUCCESS)
+			return;
+	}
+}
+
+/*
  * repo_matches -- return true if any package in the job set originates from
  * a repository named in the comma-separated filter string.
  *
@@ -142,8 +172,18 @@ repo_matches(struct pkg_jobs *jobs, const char *filter)
 		p = buf;
 		matched = false;
 		while ((token = strsep(&p, ",")) != NULL && !matched) {
+			char	*end;
+
+			/*
+			 * Strip leading and trailing whitespace so that
+			 * "repo1 , repo2" matches both tokens.
+			 */
 			while (*token == ' ' || *token == '\t')
 				token++;
+			end = token + strlen(token);
+			while (end > token &&
+			    (end[-1] == ' ' || end[-1] == '\t'))
+				*--end = '\0';
 			if (*token == '\0')
 				continue;
 
@@ -272,6 +312,13 @@ be_hook(void *data, struct pkgdb *db)
 		goto done;
 	}
 
+	/*
+	 * Resolve same-second name collisions before creating.  The base name
+	 * already passed be_validate_name(); the "-N" suffix only adds a hyphen
+	 * and digits, so the result stays valid and well under the length cap.
+	 */
+	disambiguate_be_name(hdl, be_name, sizeof(be_name));
+
 	if (be_create(hdl, be_name) != BE_ERR_SUCCESS) {
 		syslog(LOG_WARNING,
 		    "pkg-be-plugin: %s: be_create(\"%s\") failed: %s",
@@ -347,6 +394,26 @@ pkg_plugin_init(struct pkg_plugin *p)
 
 	if (!g_config.enabled)
 		return (EPKG_OK);
+
+	/*
+	 * Probe for ZFS boot-environment support once, at load time.  On
+	 * systems without a ZFS BE (UFS root, jails without ZFS access)
+	 * libbe_init() returns NULL.  Rather than registering hooks that then
+	 * fail -- and emit a pkg error -- on every single transaction (and, in
+	 * strict mode, abort every transaction), leave the plugin inert: emit a
+	 * single informational message and register no hooks.
+	 */
+	{
+		libbe_handle_t	*probe;
+
+		if ((probe = libbe_init(NULL)) == NULL) {
+			pkg_plugin_info(p,
+			    "not a ZFS boot environment system; "
+			    "boot environments will not be created");
+			return (EPKG_OK);
+		}
+		libbe_close(probe);
+	}
 
 	if (pkg_plugin_hook_register(p, PKG_PLUGIN_HOOK_PRE_INSTALL,
 	    be_hook) != EPKG_OK) {
