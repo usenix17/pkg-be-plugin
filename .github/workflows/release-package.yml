@@ -1,0 +1,98 @@
+# Build (and optionally sign) the binary pkg for each published release.
+#
+# GitHub has no native FreeBSD runner, so the package is built inside a FreeBSD
+# VM (vmactions/freebsd-vm) running on the ubuntu-latest host.  The resulting
+# *.pkg is copied back to the host, signed if a signing key is configured, and
+# attached to the release as an asset.
+#
+# ---------------------------------------------------------------------------
+# Signing (optional -- the workflow still builds an unsigned package without it)
+#
+#   1. Generate a keypair (an RSA or ECDSA key; both work with `openssl dgst`):
+#        openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 \
+#            -out pkg-signing.key
+#        openssl pkey -in pkg-signing.key -pubout -out pkg-be-plugin.pub
+#
+#   2. Store the PRIVATE key as the repository secret PKG_SIGNING_KEY
+#        (Settings -> Secrets and variables -> Actions -> New repository secret).
+#      Keep pkg-signing.key off the repo; commit the PUBLIC key pkg-be-plugin.pub
+#      so downstream hosts can verify.
+#
+#   3. Verify a downloaded package before installing it:
+#        openssl dgst -sha256 -verify pkg-be-plugin.pub \
+#            -signature pkg-be-plugin-X.Y.Z.pkg.sig pkg-be-plugin-X.Y.Z.pkg
+#        pkg add ./pkg-be-plugin-X.Y.Z.pkg
+# ---------------------------------------------------------------------------
+
+name: release-package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to attach the package to (leave blank to only upload a build artifact)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write           # needed to attach assets to the release
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    env:
+      PKG_SIGNING_KEY: ${{ secrets.PKG_SIGNING_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # libbe(3) is in the FreeBSD base system; pkg.h and libpkg.so come from
+      # the pkg package.  Build for the ABI that matches the target hosts --
+      # adjust `release` if your hosts are not 15.0 (FreeBSD:15:amd64).
+      - name: Build package in a FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "15.0"
+          usesh: true
+          prepare: |
+            pkg install -y pkg
+          run: |
+            set -eu
+            make package
+            ls -l ./*.pkg
+
+      - name: Sign package
+        if: ${{ env.PKG_SIGNING_KEY != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$PKG_SIGNING_KEY" > pkg-signing.key
+          for f in ./*.pkg; do
+            openssl dgst -sha256 -sign pkg-signing.key -out "$f.sig" "$f"
+            echo "signed $f -> $f.sig"
+          done
+          rm -f pkg-signing.key
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-be-plugin-package
+          path: |
+            ./*.pkg
+            ./*.pkg.sig
+          if-no-files-found: error
+
+      - name: Attach package to the release
+        if: ${{ github.event_name == 'release' || github.event.inputs.tag != '' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(./*.pkg ./*.pkg.sig)
+          gh release upload "$TAG" "${assets[@]}" --clobber

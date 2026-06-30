@@ -1,0 +1,14 @@
+name: pkg-be-plugin
+version: "@VERSION@"
+origin: sysutils/pkg-be-plugin
+comment: "Auto-create ZFS boot environments before pkg transactions"
+maintainer: sasha@starnix.net
+www: "https://github.com/usenix17/pkg-be-plugin"
+prefix: /usr/local
+categories: [sysutils]
+licenselogic: single
+licenses: [BSD2CLAUSE]
+desc: "pkg-be-plugin is a pkg(8) plugin for FreeBSD that automatically creates\na ZFS boot environment before each package install, upgrade, or deinstall\ntransaction, so a broken transaction can be rolled back by booting the\nprevious environment.  Boot environments are created and pruned via\nlibbe(3) directly, with no exec of bectl(8) or zfs(8)."
+messages: [
+  { message: "To activate the plugin, enable pkg(8) plugins in\n/usr/local/etc/pkg.conf:\n\n    PKG_ENABLE_PLUGINS = true;\n    PLUGINS [ \"be\" ];\n\nA sample configuration is installed at\n/usr/local/etc/pkg/be.conf.sample and copied to be.conf on first\ninstall; all keys have compiled-in defaults.\n\nThe plugin requires the system to be booted from a ZFS boot\nenvironment; on UFS roots it logs a notice and stays inert." }
+]

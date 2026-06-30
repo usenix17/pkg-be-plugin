@@ -87,4 +87,46 @@ fmt-check:
 test:
 	cd ${.CURDIR}/tests && ${MAKE}
 
+# Binary package -------------------------------------------------------------
+#
+# `make package` stages the install tree and runs pkg-create(8) to produce
+# ${PKGNAME}-${PKGVERSION}.pkg, which any matching host can install with
+# `pkg add ./${PKGNAME}-${PKGVERSION}.pkg`.  PKGVERSION is read straight from
+# the plugin source so it tracks PKG_PLUGIN_VERSION with no second copy to
+# update.  Staging records the building user for ownership (so the target needs
+# no privilege); pkg create rewrites that to root:wheel while keeping the staged
+# file modes, and auto-detects the ABI and required shared libraries.
+PKGVERSION!=    sed -n 's/.*PKG_PLUGIN_VERSION, "\([0-9.]*\)".*/\1/p' \
+	            ${.CURDIR}/pkg-be-plugin.c
+PKGNAME=        pkg-be-plugin
+PKGFILE=        ${PKGNAME}-${PKGVERSION}.pkg
+PKGOUTDIR?=     ${.CURDIR}
+PKGWRKDIR=      ${.CURDIR}/pkgwork
+PKGSTAGE=       ${PKGWRKDIR}/stage
+PKGMETA=        ${PKGWRKDIR}/meta
+
+CLEANFILES+=    *.pkg
+CLEANDIRS+=     pkgwork
+
+# Stage as the building user; WITHOUT_DEBUG_FILES keeps the .debug file (not in
+# the plist) out of the staging tree so an unprivileged run never chowns it.
+_PKGSTAGE_ENV=  WITHOUT_DEBUG_FILES=yes \
+	            LIBOWN=$$(id -un) LIBGRP=$$(id -gn) \
+	            MANOWN=$$(id -un) MANGRP=$$(id -gn) \
+	            SHAREOWN=$$(id -un) SHAREGRP=$$(id -gn) \
+	            BINOWN=$$(id -un) BINGRP=$$(id -gn)
+
+package: all
+	rm -rf ${PKGWRKDIR}
+	mkdir -p ${PKGSTAGE} ${PKGMETA} ${PKGOUTDIR}
+	${MAKE} -C ${.CURDIR} install DESTDIR=${PKGSTAGE} ${_PKGSTAGE_ENV}
+	${INSTALL} -d ${PKGSTAGE}${LOCALBASE}/etc/pkg
+	${INSTALL} -m 0644 ${.CURDIR}/be.conf \
+	    ${PKGSTAGE}${LOCALBASE}/etc/pkg/be.conf.sample
+	sed 's,@VERSION@,${PKGVERSION},g' ${.CURDIR}/pkg-manifest.in \
+	    > ${PKGMETA}/+MANIFEST
+	pkg create -o ${PKGOUTDIR} -r ${PKGSTAGE} -m ${PKGMETA} \
+	    -p ${.CURDIR}/pkg-plist
+	@echo "==> ${PKGOUTDIR}/${PKGFILE}"
+
 .include <bsd.lib.mk>
