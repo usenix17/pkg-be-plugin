@@ -1,0 +1,3 @@
+lib/pkg/be.so
+share/man/man8/pkg-be-plugin.8.gz
+@sample etc/pkg/be.conf.sample

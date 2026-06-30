@@ -12,6 +12,15 @@
 # Compiled manpages
 *.gz
 
+# Binary package build (make package)
+*.pkg
+pkgwork/
+
+# Package signing material -- never commit the private key or signatures.
+# The public key (pkg-be-plugin.pub) is NOT ignored and should be committed.
+*.key
+*.sig
+
 # Debug symbols
 *.dSYM/
 
