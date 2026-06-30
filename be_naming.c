@@ -26,25 +26,49 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PRUNE_H
-#define	PRUNE_H
+/*
+ * be_naming.c -- boot-environment name disambiguation, free of libbe.
+ *
+ * Compiled into be.so (via the production wrapper in pkg-be-plugin.c) and into
+ * the test_naming binary.  See be_naming.h for the seam rationale.
+ */
 
-#include <stdint.h>
-#include <time.h>
+#include <sys/cdefs.h>
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "be_naming.h"
 
 /*
- * prune_old_bes: enumerate boot environments matching prefix, then destroy
- * the oldest ones until count is at or below keep, subject to min_age.
- *
- * BEs younger than min_age are never destroyed regardless of count.
- * Pruning is best-effort: failures are logged to syslog but do not affect
- * the pkg transaction.
- *
- * prefix  -- BE name prefix to match (e.g. "pre-pkg")
- * keep    -- target maximum number of matching BEs to retain
- * min_age -- minimum age in seconds a BE must reach before it is eligible
- *            for pruning; 0 means no minimum
+ * BE_DISAMBIG_BASE_MAX: scratch storage for the original base name while the
+ * "-N" suffixes are tried.  Comfortably larger than the 128-byte BE name
+ * buffer the plugin generates; oversized input is truncated by strlcpy, which
+ * is harmless because a truncated base only ever produces a still-unique name.
  */
-void		prune_old_bes(const char *prefix, int64_t keep, time_t min_age);
+#define	BE_DISAMBIG_BASE_MAX	256
 
-#endif				/* PRUNE_H */
+bool
+be_disambiguate_name(be_name_taken_fn taken, void *ctx,
+    char *buf, size_t bufsz)
+{
+	char		base[BE_DISAMBIG_BASE_MAX];
+	int		n;
+
+	if (taken == NULL || buf == NULL || bufsz == 0)
+		return (true);
+
+	if (!taken(ctx, buf))
+		return (true);
+
+	(void)strlcpy(base, buf, sizeof(base));
+	for (n = 2; n < 100; n++) {
+		(void)snprintf(buf, bufsz, "%s-%d", base, n);
+		if (!taken(ctx, buf))
+			return (true);
+	}
+
+	return (false);
+}

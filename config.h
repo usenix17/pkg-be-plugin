@@ -38,21 +38,21 @@ struct be_config;
  * config file.  Must be called before config_load().
  * Returns EPKG_OK or EPKG_FATAL.
  */
-int	config_register_keys(struct pkg_plugin *);
+int		config_register_keys(struct pkg_plugin *);
 
 /*
  * config_load: walk the parsed config object and populate *cfg.
  * Validates values (e.g. parses min_age duration string).
  * Returns EPKG_OK or EPKG_FATAL on invalid config.
  */
-int	config_load(struct pkg_plugin *, struct be_config *);
+int		config_load(struct pkg_plugin *, struct be_config *);
 
 /*
  * parse_duration: convert a duration string ("7d", "24h", "30m", "300") to
  * seconds.  Exposed for unit testing.
  * Returns 0 on success, -1 on parse error.
  */
-int	parse_duration(const char *, time_t *);
+int		parse_duration(const char *, time_t *);
 
 /*
  * parse_skip_transactions: parse a comma-separated list of transaction types
@@ -60,6 +60,6 @@ int	parse_duration(const char *, time_t *);
  * in *cfg.  Unknown tokens produce a warning but are not fatal.
  * Exposed for unit testing.
  */
-void	parse_skip_transactions(const char *, struct be_config *);
+void		parse_skip_transactions(const char *, struct be_config *);
 
-#endif	/* CONFIG_H */
+#endif				/* CONFIG_H */

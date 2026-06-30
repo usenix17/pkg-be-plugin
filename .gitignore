@@ -25,3 +25,10 @@
 tests/*.o
 tests/test_runner
 tests/*.tap
+
+# Compiled ATF test programs and their split debug files
+tests/test_config
+tests/test_prune
+tests/test_naming
+tests/*.debug
+tests/*.full

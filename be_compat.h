@@ -47,10 +47,10 @@
  * All files that need be.h must include this header instead.
  */
 
-typedef unsigned int	uint_t;
-typedef unsigned int	boolean_t;
-typedef unsigned char	uchar_t;
-typedef long long	hrtime_t;
+typedef unsigned int uint_t;
+typedef unsigned int boolean_t;
+typedef unsigned char uchar_t;
+typedef long long hrtime_t;
 
 /*
  * sys/nvpair.h uses va_list in nv_alloc_ops.  Include stdarg.h here so
@@ -61,4 +61,4 @@ typedef long long	hrtime_t;
 
 #include <be.h>
 
-#endif	/* BE_COMPAT_H */
+#endif				/* BE_COMPAT_H */
