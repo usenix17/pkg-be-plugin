@@ -104,6 +104,9 @@ PKGOUTDIR?=     ${.CURDIR}
 PKGWRKDIR=      ${.CURDIR}/pkgwork
 PKGSTAGE=       ${PKGWRKDIR}/stage
 PKGMETA=        ${PKGWRKDIR}/meta
+# @sample in pkg-plist is a ports keyword; vendor it so pkg create works with
+# no ports tree (e.g. in CI).  PLIST_KEYWORDS_DIR overrides ${PORTSDIR}/Keywords.
+PKGKEYWORDS=    ${.CURDIR}/keywords
 
 CLEANFILES+=    *.pkg
 CLEANDIRS+=     pkgwork
@@ -125,7 +128,8 @@ package: all
 	    ${PKGSTAGE}${LOCALBASE}/etc/pkg/be.conf.sample
 	sed 's,@VERSION@,${PKGVERSION},g' ${.CURDIR}/pkg-manifest.in \
 	    > ${PKGMETA}/+MANIFEST
-	pkg create -o ${PKGOUTDIR} -r ${PKGSTAGE} -m ${PKGMETA} \
+	pkg -o PLIST_KEYWORDS_DIR=${PKGKEYWORDS} \
+	    create -o ${PKGOUTDIR} -r ${PKGSTAGE} -m ${PKGMETA} \
 	    -p ${.CURDIR}/pkg-plist
 	@echo "==> ${PKGOUTDIR}/${PKGFILE}"
 
