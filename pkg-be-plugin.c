@@ -51,6 +51,7 @@
 #include <pkg.h>
 
 #include "pkg-be-plugin.h"
+#include "be_naming.h"
 #include "config.h"
 #include "prune.h"
 
@@ -62,8 +63,8 @@
  */
 #define	BE_NAME_LEN	128
 
-struct pkg_plugin	*g_plugin;
-struct be_config	 g_config;
+struct pkg_plugin *g_plugin;
+struct be_config g_config;
 
 /*
  * be_hook_name -- return a human-readable label for a transaction type.
@@ -75,10 +76,14 @@ static const char *
 be_hook_name(pkg_jobs_t type)
 {
 	switch (type) {
-	case PKG_JOBS_INSTALL:		return ("pre-install");
-	case PKG_JOBS_UPGRADE:		return ("pre-upgrade");
-	case PKG_JOBS_DEINSTALL:	return ("pre-deinstall");
-	default:			return ("unknown");
+	case PKG_JOBS_INSTALL:
+		return ("pre-install");
+	case PKG_JOBS_UPGRADE:
+		return ("pre-upgrade");
+	case PKG_JOBS_DEINSTALL:
+		return ("pre-deinstall");
+	default:
+		return ("unknown");
 	}
 }
 
@@ -103,33 +108,35 @@ generate_be_name(const char *prefix, char *buf, size_t bufsz)
 }
 
 /*
+ * be_name_taken_libbe -- be_name_taken_fn backed by libbe's be_exists().
+ *
+ * be_exists() returns BE_ERR_SUCCESS (0) when the BE exists.  ctx is the
+ * libbe handle.  This is the production half of the be_naming.c seam.
+ */
+static bool
+be_name_taken_libbe(void *ctx, const char *name)
+{
+	libbe_handle_t *hdl = ctx;
+
+	return (be_exists(hdl, name) == BE_ERR_SUCCESS);
+}
+
+/*
  * disambiguate_be_name -- ensure buf names a BE that does not already exist.
  *
  * generate_be_name() has one-second resolution, so two transactions in the
  * same wall-clock second (scripted runs, CI) would generate identical names
  * and the second be_create() would fail with "already exists" -- which, in
- * strict mode, aborts an otherwise valid transaction.  If the generated name
- * is already taken, append "-N" (N from 2) until a free name is found.
- *
- * be_exists() returns BE_ERR_SUCCESS (0) when the BE exists.  On the unlikely
- * event that 2..99 are all taken we leave the last candidate in place and let
- * be_create() report the collision through the normal error path.
+ * strict mode, aborts an otherwise valid transaction.  The collision-handling
+ * logic lives in be_disambiguate_name() (be_naming.c) so it can be unit
+ * tested without libbe; here we just bind it to be_exists().  If 2..99 are all
+ * taken we leave the last candidate in place and let be_create() report the
+ * collision through the normal error path.
  */
 static void
 disambiguate_be_name(libbe_handle_t *hdl, char *buf, size_t bufsz)
 {
-	char	base[BE_NAME_LEN];
-	int	n;
-
-	if (be_exists(hdl, buf) != BE_ERR_SUCCESS)
-		return;
-
-	(void)strlcpy(base, buf, sizeof(base));
-	for (n = 2; n < 100; n++) {
-		(void)snprintf(buf, bufsz, "%s-%d", base, n);
-		if (be_exists(hdl, buf) != BE_ERR_SUCCESS)
-			return;
-	}
+	(void)be_disambiguate_name(be_name_taken_libbe, hdl, buf, bufsz);
 }
 
 /*
@@ -143,19 +150,19 @@ disambiguate_be_name(libbe_handle_t *hdl, char *buf, size_t bufsz)
 static bool
 repo_matches(struct pkg_jobs *jobs, const char *filter)
 {
-	struct pkg	*new_pkg, *old_pkg;
-	void		*iter;
-	int		 jtype;
-	const char	*reponame;
-	char		 buf[512], *p, *token;
-	bool		 matched;
+	struct pkg     *new_pkg, *old_pkg;
+	void	       *iter;
+	int		jtype;
+	const char     *reponame;
+	char		buf[512], *p, *token;
+	bool		matched;
 
 	if (filter == NULL || *filter == '\0')
 		return (true);
 
 	iter = NULL;
 	while (pkg_jobs_iter(jobs, &iter, &new_pkg, &old_pkg, &jtype)) {
-		struct pkg *pkg = new_pkg != NULL ? new_pkg : old_pkg;
+		struct pkg     *pkg = new_pkg != NULL ? new_pkg : old_pkg;
 
 		if (pkg == NULL)
 			continue;
@@ -172,7 +179,7 @@ repo_matches(struct pkg_jobs *jobs, const char *filter)
 		p = buf;
 		matched = false;
 		while ((token = strsep(&p, ",")) != NULL && !matched) {
-			char	*end;
+			char	       *end;
 
 			/*
 			 * Strip leading and trailing whitespace so that
@@ -223,12 +230,12 @@ repo_matches(struct pkg_jobs *jobs, const char *filter)
 static int
 be_hook(void *data, struct pkgdb *db)
 {
-	libbe_handle_t	*hdl;
-	struct pkg_jobs	*jobs;
-	pkg_jobs_t	 type;
-	const char	*hook_name;
-	char		 be_name[BE_NAME_LEN];
-	int		 error;
+	libbe_handle_t *hdl;
+	struct pkg_jobs *jobs;
+	pkg_jobs_t	type;
+	const char     *hook_name;
+	char		be_name[BE_NAME_LEN];
+	int		error;
 
 	(void)db;
 
@@ -404,7 +411,7 @@ pkg_plugin_init(struct pkg_plugin *p)
 	 * single informational message and register no hooks.
 	 */
 	{
-		libbe_handle_t	*probe;
+		libbe_handle_t *probe;
 
 		if ((probe = libbe_init(NULL)) == NULL) {
 			pkg_plugin_info(p,

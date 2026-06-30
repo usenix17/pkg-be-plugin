@@ -84,8 +84,8 @@
 int
 parse_duration(const char *s, time_t *out)
 {
-	char	*end;
-	long	 n;
+	char	       *end;
+	long		n;
 
 	if (s == NULL || *s == '\0')
 		return (-1);
@@ -138,7 +138,7 @@ parse_duration(const char *s, time_t *out)
 void
 parse_skip_transactions(const char *s, struct be_config *cfg)
 {
-	char	*buf, *p, *token;
+	char	       *buf, *p, *token;
 
 	cfg->skip_install = false;
 	cfg->skip_upgrade = false;
@@ -160,7 +160,7 @@ parse_skip_transactions(const char *s, struct be_config *cfg)
 
 	p = buf;
 	while ((token = strsep(&p, ",")) != NULL) {
-		char	*end;
+		char	       *end;
 
 		/*
 		 * Strip leading and trailing whitespace so that both
@@ -246,9 +246,9 @@ fail:
 int
 config_load(struct pkg_plugin *p, struct be_config *cfg)
 {
-	const pkg_object	*conf, *obj;
-	const char		*key, *val;
-	pkg_iter		 it = NULL;
+	const pkg_object *conf, *obj;
+	const char     *key, *val;
+	pkg_iter	it = NULL;
 
 	/*
 	 * Initialise to defaults first.  If the config object is NULL or

@@ -40,12 +40,14 @@
  */
 struct be_config {
 	bool		enabled;	/* BE_PLUGIN_ENABLED */
-	int64_t		keep;		/* BE_PLUGIN_KEEP: target max retained BEs */
-	time_t		min_age;	/* BE_PLUGIN_MIN_AGE: converted to seconds */
+	int64_t		keep;	/* BE_PLUGIN_KEEP: target max retained BEs */
+	time_t		min_age;	/* BE_PLUGIN_MIN_AGE: converted to
+					 * seconds */
 	char		prefix[64];	/* BE_PLUGIN_NAME_PREFIX */
-	bool		strict;		/* BE_PLUGIN_STRICT: abort on failure */
+	bool		strict;	/* BE_PLUGIN_STRICT: abort on failure */
 	bool		skip_install;	/* \                                    */
-	bool		skip_upgrade;	/*  > derived from BE_PLUGIN_SKIP_TRANSACTIONS */
+	bool		skip_upgrade;	/* > derived from
+					 * BE_PLUGIN_SKIP_TRANSACTIONS */
 	bool		skip_deinstall;	/* /                                    */
 	/*
 	 * BE_PLUGIN_REPOSITORIES: comma-separated list of repository names that
@@ -64,16 +66,17 @@ struct be_config {
  * g_config: used by prune.c to be passed into prune_old_bes() by the caller
  *           rather than by direct access; declared here for completeness.
  */
-struct pkg_plugin;			/* forward declaration; include <pkg.h> for full type */
-extern struct pkg_plugin	*g_plugin;
-extern struct be_config		 g_config;
+struct pkg_plugin;		/* forward declaration; include <pkg.h> for
+				 * full type */
+extern struct pkg_plugin *g_plugin;
+extern struct be_config g_config;
 
 /*
  * Plugin entry points called by pkg(8) via dlsym().  Declared here so that
  * the compiler can enforce the prototype when the definitions appear in
  * pkg-be-plugin.c without triggering -Wmissing-prototypes.
  */
-int	pkg_plugin_init(struct pkg_plugin *);
-int	pkg_plugin_shutdown(struct pkg_plugin *);
+int		pkg_plugin_init(struct pkg_plugin *);
+int		pkg_plugin_shutdown(struct pkg_plugin *);
 
-#endif	/* PKG_BE_PLUGIN_H */
+#endif				/* PKG_BE_PLUGIN_H */

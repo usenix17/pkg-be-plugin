@@ -36,11 +36,15 @@
  *
  *   1. cand_sort: qsort of a be_candidate array sorts oldest-first.
  *   2. be_name_matches_prefix: the "<prefix>-..." name check.
+ *   3. be_prune_select: which sorted candidates get destroyed, and when the
+ *      min_age cutoff defers the remainder, driven through recording mocks
+ *      that stand in for be_destroy() and the deferred notice.
  *
- * Both are accessed through the thin shim in prune_testable.c which
- * re-uses the struct definition and exposes the otherwise-static helpers.
+ * All are accessed through prune_testable.c, the same source that prune.c
+ * itself links, so these tests exercise the production logic directly.
  */
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -262,6 +266,189 @@ ATF_TC_BODY(prefix_match_empty_name, tc)
 }
 
 /* ------------------------------------------------------------------ */
+/* be_prune_select tests                                                 */
+/* ------------------------------------------------------------------ */
+
+/*
+ * prune_record -- captures the destroy()/defer() callbacks so a test can
+ * assert exactly which BEs were selected, in order, and whether the min_age
+ * cutoff deferred any remainder.
+ */
+#define	REC_MAX	16
+
+struct prune_record {
+	char	destroyed[REC_MAX][BE_CAND_NAME_MAX];
+	size_t	n_destroyed;
+	size_t	defer_calls;
+	size_t	defer_remaining;
+};
+
+static void
+rec_destroy(void *ctx, const char *name)
+{
+	struct prune_record	*r = ctx;
+
+	if (r->n_destroyed < REC_MAX)
+		(void)strlcpy(r->destroyed[r->n_destroyed], name,
+		    BE_CAND_NAME_MAX);
+	r->n_destroyed++;
+}
+
+static void
+rec_defer(void *ctx, size_t remaining)
+{
+	struct prune_record	*r = ctx;
+
+	r->defer_calls++;
+	r->defer_remaining = remaining;
+}
+
+static void
+set_cand(struct be_candidate *c, const char *name, time_t creation)
+{
+	(void)strlcpy(c->name, name, sizeof(c->name));
+	c->creation = creation;
+}
+
+ATF_TC(select_within_keep_noop);
+ATF_TC_HEAD(select_within_keep_noop, tc)
+{
+	atf_tc_set_md_var(tc, "descr",
+	    "be_prune_select: count <= keep destroys nothing and never defers");
+}
+ATF_TC_BODY(select_within_keep_noop, tc)
+{
+	struct be_candidate	cands[3];
+	struct prune_record	r = { { { 0 } }, 0, 0, 0 };
+	size_t			destroyed;
+
+	set_cand(&cands[0], "pre-pkg-a", 1000);
+	set_cand(&cands[1], "pre-pkg-b", 2000);
+	set_cand(&cands[2], "pre-pkg-c", 3000);
+
+	/* keep == count is still within the limit. */
+	destroyed = be_prune_select(cands, 3, 3, 0, 100000,
+	    rec_destroy, rec_defer, &r);
+
+	ATF_REQUIRE_EQ(destroyed, 0);
+	ATF_REQUIRE_EQ(r.n_destroyed, 0);
+	ATF_REQUIRE_EQ(r.defer_calls, 0);
+}
+
+ATF_TC(select_oldest_first);
+ATF_TC_HEAD(select_oldest_first, tc)
+{
+	atf_tc_set_md_var(tc, "descr",
+	    "be_prune_select: with min_age disabled the oldest (count-keep) "
+	    "BEs are destroyed in oldest-first order");
+}
+ATF_TC_BODY(select_oldest_first, tc)
+{
+	struct be_candidate	cands[5];
+	struct prune_record	r = { { { 0 } }, 0, 0, 0 };
+	size_t			destroyed;
+
+	set_cand(&cands[0], "pre-pkg-1000", 1000);
+	set_cand(&cands[1], "pre-pkg-2000", 2000);
+	set_cand(&cands[2], "pre-pkg-3000", 3000);
+	set_cand(&cands[3], "pre-pkg-4000", 4000);
+	set_cand(&cands[4], "pre-pkg-5000", 5000);
+
+	destroyed = be_prune_select(cands, 5, 2, 0, 100000,
+	    rec_destroy, rec_defer, &r);
+
+	ATF_REQUIRE_EQ(destroyed, 3);
+	ATF_REQUIRE_EQ(r.n_destroyed, 3);
+	ATF_REQUIRE_EQ(r.defer_calls, 0);
+	ATF_REQUIRE_STREQ(r.destroyed[0], "pre-pkg-1000");
+	ATF_REQUIRE_STREQ(r.destroyed[1], "pre-pkg-2000");
+	ATF_REQUIRE_STREQ(r.destroyed[2], "pre-pkg-3000");
+}
+
+ATF_TC(select_min_age_defers_all);
+ATF_TC_HEAD(select_min_age_defers_all, tc)
+{
+	atf_tc_set_md_var(tc, "descr",
+	    "be_prune_select: when every over-limit BE is younger than min_age, "
+	    "nothing is destroyed and defer() fires once for the whole set");
+}
+ATF_TC_BODY(select_min_age_defers_all, tc)
+{
+	struct be_candidate	cands[5];
+	struct prune_record	r = { { { 0 } }, 0, 0, 0 };
+	size_t			destroyed;
+
+	/* now=10000, min_age=1000; all creations are within 1000s of now. */
+	set_cand(&cands[0], "pre-pkg-a", 9500);
+	set_cand(&cands[1], "pre-pkg-b", 9600);
+	set_cand(&cands[2], "pre-pkg-c", 9700);
+	set_cand(&cands[3], "pre-pkg-d", 9800);
+	set_cand(&cands[4], "pre-pkg-e", 9900);
+
+	destroyed = be_prune_select(cands, 5, 2, 1000, 10000,
+	    rec_destroy, rec_defer, &r);
+
+	ATF_REQUIRE_EQ(destroyed, 0);
+	ATF_REQUIRE_EQ(r.n_destroyed, 0);
+	ATF_REQUIRE_EQ(r.defer_calls, 1);
+	ATF_REQUIRE_EQ(r.defer_remaining, 3);	/* count - keep = 5 - 2 */
+}
+
+ATF_TC(select_min_age_partial);
+ATF_TC_HEAD(select_min_age_partial, tc)
+{
+	atf_tc_set_md_var(tc, "descr",
+	    "be_prune_select: old-enough BEs are destroyed and the first "
+	    "too-young BE defers exactly the remaining count");
+}
+ATF_TC_BODY(select_min_age_partial, tc)
+{
+	struct be_candidate	cands[5];
+	struct prune_record	r = { { { 0 } }, 0, 0, 0 };
+	size_t			destroyed;
+
+	/*
+	 * now=10000, min_age=1000, keep=1 -> 4 candidates are over the limit.
+	 * Ages: 9000, 8000, 7000 (>= min_age, destroyed); then 500 (< min_age,
+	 * defers the remainder).  The fifth is retained by keep.
+	 */
+	set_cand(&cands[0], "pre-pkg-1000", 1000);
+	set_cand(&cands[1], "pre-pkg-2000", 2000);
+	set_cand(&cands[2], "pre-pkg-3000", 3000);
+	set_cand(&cands[3], "pre-pkg-9500", 9500);
+	set_cand(&cands[4], "pre-pkg-9600", 9600);
+
+	destroyed = be_prune_select(cands, 5, 1, 1000, 10000,
+	    rec_destroy, rec_defer, &r);
+
+	ATF_REQUIRE_EQ(destroyed, 3);
+	ATF_REQUIRE_EQ(r.n_destroyed, 3);
+	ATF_REQUIRE_STREQ(r.destroyed[2], "pre-pkg-3000");
+	ATF_REQUIRE_EQ(r.defer_calls, 1);
+	ATF_REQUIRE_EQ(r.defer_remaining, 1);	/* n_delete(4) - i(3) */
+}
+
+ATF_TC(select_negative_keep_noop);
+ATF_TC_HEAD(select_negative_keep_noop, tc)
+{
+	atf_tc_set_md_var(tc, "descr",
+	    "be_prune_select: a negative keep is rejected, destroying nothing");
+}
+ATF_TC_BODY(select_negative_keep_noop, tc)
+{
+	struct be_candidate	cands[2];
+	struct prune_record	r = { { { 0 } }, 0, 0, 0 };
+
+	set_cand(&cands[0], "pre-pkg-a", 1000);
+	set_cand(&cands[1], "pre-pkg-b", 2000);
+
+	ATF_REQUIRE_EQ(be_prune_select(cands, 2, -1, 0, 100000,
+	    rec_destroy, rec_defer, &r), 0);
+	ATF_REQUIRE_EQ(r.n_destroyed, 0);
+	ATF_REQUIRE_EQ(r.defer_calls, 0);
+}
+
+/* ------------------------------------------------------------------ */
 /* Test program entry point                                              */
 /* ------------------------------------------------------------------ */
 
@@ -281,6 +468,13 @@ ATF_TP_ADD_TCS(tp)
 	ATF_TP_ADD_TC(tp, prefix_match_superstring);
 	ATF_TP_ADD_TC(tp, prefix_match_partial_word);
 	ATF_TP_ADD_TC(tp, prefix_match_empty_name);
+
+	/* be_prune_select */
+	ATF_TP_ADD_TC(tp, select_within_keep_noop);
+	ATF_TP_ADD_TC(tp, select_oldest_first);
+	ATF_TP_ADD_TC(tp, select_min_age_defers_all);
+	ATF_TP_ADD_TC(tp, select_min_age_partial);
+	ATF_TP_ADD_TC(tp, select_negative_keep_noop);
 
 	return (atf_no_error());
 }
