@@ -28,8 +28,20 @@ make install
 ```
 
 This installs:
-- `/usr/local/lib/pkg/be.so` — the plugin shared object
-- `/usr/local/man/man8/pkg-be-plugin.8` — the manual page
+- `/usr/local/lib/pkg/be.so` -- the plugin shared object
+- `/usr/local/share/man/man8/pkg-be-plugin.8.gz` -- the manual page
+
+### Installing from a release package
+
+Each [release](https://github.com/usenix17/pkg-be-plugin/releases) ships a
+prebuilt `.pkg` and a detached signature. Verify against the repository's
+public key, then install:
+
+```sh
+openssl dgst -sha256 -verify pkg-be-plugin.pub \
+    -signature pkg-be-plugin-1.0.1.pkg.sig pkg-be-plugin-1.0.1.pkg
+pkg add ./pkg-be-plugin-1.0.1.pkg
+```
 
 pkg(8) loads only plugins that are explicitly enabled. Add the plugin to
 `/usr/local/etc/pkg.conf`:
@@ -84,6 +96,14 @@ bectl activate pre-pkg-20260513T142301
 
 # Reboot
 reboot
+```
+
+Logging honours the global `SYSLOG` option of pkg.conf(5); if you have
+disabled it, the plugin writes no syslog entries. In that case list the
+environments by creation time instead:
+
+```sh
+bectl list -c creation
 ```
 
 ## Running the tests
