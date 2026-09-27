@@ -95,11 +95,11 @@ prune_destroy_cb(void *ctx, const char *name)
 	libbe_handle_t *hdl = ((struct prune_ctx *)ctx)->hdl;
 
 	if (be_destroy(hdl, name, BE_DESTROY_AUTOORIGIN) != BE_ERR_SUCCESS) {
-		syslog(LOG_WARNING,
+		be_syslog(LOG_WARNING,
 		    "pkg-be-plugin: prune: be_destroy(\"%s\") failed: %s",
 		    name, libbe_error_description(hdl));
 	} else {
-		syslog(LOG_NOTICE,
+		be_syslog(LOG_NOTICE,
 		    "pkg-be-plugin: prune: destroyed \"%s\"", name);
 	}
 }
@@ -112,7 +112,7 @@ prune_defer_cb(void *ctx, size_t remaining)
 {
 	const struct prune_ctx *pc = ctx;
 
-	syslog(LOG_NOTICE,
+	be_syslog(LOG_NOTICE,
 	    "pkg-be-plugin: prune: %zu BE(s) over keep=%lld limit but under "
 	    "min_age=%llds; will prune later",
 	    remaining, (long long)pc->keep, (long long)pc->min_age);
@@ -162,21 +162,21 @@ prune_old_bes(const char *prefix, int64_t keep, time_t min_age)
 
 	hdl = libbe_init(NULL);
 	if (hdl == NULL) {
-		syslog(LOG_WARNING, "pkg-be-plugin: prune: libbe_init failed");
+		be_syslog(LOG_WARNING, "pkg-be-plugin: prune: libbe_init failed");
 		return;
 	}
 	libbe_print_on_error(hdl, false);
 
 	props = NULL;
 	if (be_prop_list_alloc(&props) != 0) {
-		syslog(LOG_WARNING,
+		be_syslog(LOG_WARNING,
 		    "pkg-be-plugin: prune: be_prop_list_alloc failed");
 		libbe_close(hdl);
 		return;
 	}
 
 	if (be_get_bootenv_props(hdl, props) != BE_ERR_SUCCESS) {
-		syslog(LOG_WARNING,
+		be_syslog(LOG_WARNING,
 		    "pkg-be-plugin: prune: be_get_bootenv_props failed: %s",
 		    libbe_error_description(hdl));
 		be_prop_list_free(props);
@@ -187,7 +187,7 @@ prune_old_bes(const char *prefix, int64_t keep, time_t min_age)
 	cap = CAND_INIT_CAP;
 	cands = malloc(cap * sizeof(*cands));
 	if (cands == NULL) {
-		syslog(LOG_WARNING, "pkg-be-plugin: prune: malloc failed");
+		be_syslog(LOG_WARNING, "pkg-be-plugin: prune: malloc failed");
 		be_prop_list_free(props);
 		libbe_close(hdl);
 		return;
@@ -214,7 +214,7 @@ prune_old_bes(const char *prefix, int64_t keep, time_t min_age)
 			continue;
 
 		if (nvpair_value_nvlist(pair, &be_props) != 0) {
-			syslog(LOG_WARNING,
+			be_syslog(LOG_WARNING,
 			    "pkg-be-plugin: prune: skipped \"%s\" "
 			    "(nvpair_value_nvlist failed)", name);
 			continue;
@@ -222,7 +222,7 @@ prune_old_bes(const char *prefix, int64_t keep, time_t min_age)
 
 		if (nvlist_lookup_string(be_props, "creation",
 		    &creation_str) != 0) {
-			syslog(LOG_WARNING,
+			be_syslog(LOG_WARNING,
 			    "pkg-be-plugin: prune: skipped \"%s\" "
 			    "(creation property missing)", name);
 			continue;
@@ -237,7 +237,7 @@ prune_old_bes(const char *prefix, int64_t keep, time_t min_age)
 		val = strtoll(creation_str, &endptr, 10);
 		if (errno != 0 || endptr == creation_str ||
 		    *endptr != '\0' || val < 0) {
-			syslog(LOG_WARNING,
+			be_syslog(LOG_WARNING,
 			    "pkg-be-plugin: prune: skipped \"%s\" "
 			    "(cannot parse creation \"%s\")",
 			    name, creation_str);
@@ -256,7 +256,7 @@ prune_old_bes(const char *prefix, int64_t keep, time_t min_age)
 				 * than strictly oldest-first, but a system with
 				 * this many BEs is already misconfigured.
 				 */
-				syslog(LOG_WARNING,
+				be_syslog(LOG_WARNING,
 				    "pkg-be-plugin: prune: more than %d matching "
 				    "BEs; examining only the first %d",
 				    CAND_MAX_CAP, CAND_MAX_CAP);
@@ -280,7 +280,7 @@ prune_old_bes(const char *prefix, int64_t keep, time_t min_age)
 
 	be_prop_list_free(props);
 
-	syslog(LOG_NOTICE,
+	be_syslog(LOG_NOTICE,
 	    "pkg-be-plugin: prune: enumerated %zu BEs matching prefix", n_cands);
 
 	if ((int64_t)n_cands <= keep) {

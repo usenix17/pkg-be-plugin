@@ -44,6 +44,7 @@
 
 #include <time.h>
 #include <syslog.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -65,6 +66,31 @@
 
 struct pkg_plugin *g_plugin;
 struct be_config g_config;
+
+/*
+ * g_use_syslog mirrors pkg.conf's global SYSLOG option so the plugin logs
+ * if and only if pkg itself does.  Read once in pkg_plugin_init().
+ */
+static bool	g_use_syslog = true;
+
+/*
+ * be_syslog -- syslog(3) gated on pkg.conf's SYSLOG option.
+ *
+ * All syslog output from the plugin (this file and prune.c) goes through
+ * here so that disabling SYSLOG in pkg.conf silences the plugin exactly
+ * like it silences pkg(8).
+ */
+void
+be_syslog(int priority, const char *fmt,...)
+{
+	va_list		ap;
+
+	if (!g_use_syslog)
+		return;
+	va_start(ap, fmt);
+	vsyslog(priority, fmt, ap);
+	va_end(ap);
+}
 
 /*
  * be_hook_name -- return a human-readable label for a transaction type.
@@ -288,7 +314,7 @@ be_hook(void *data, struct pkgdb *db)
 		 * boot environment (e.g. UFS root, or a restricted jail).
 		 * This is the most common runtime failure in non-ZFS-BE setups.
 		 */
-		syslog(LOG_WARNING,
+		be_syslog(LOG_WARNING,
 		    "pkg-be-plugin: %s: libbe_init failed: "
 		    "not a ZFS boot environment system", hook_name);
 		pkg_plugin_error(g_plugin,
@@ -310,7 +336,7 @@ be_hook(void *data, struct pkgdb *db)
 	 * libbe_error_description() is not useful here.
 	 */
 	if (be_validate_name(hdl, be_name) != BE_ERR_SUCCESS) {
-		syslog(LOG_WARNING,
+		be_syslog(LOG_WARNING,
 		    "pkg-be-plugin: %s: invalid BE name \"%s\"",
 		    hook_name, be_name);
 		pkg_plugin_error(g_plugin,
@@ -328,7 +354,7 @@ be_hook(void *data, struct pkgdb *db)
 	disambiguate_be_name(hdl, be_name, sizeof(be_name));
 
 	if (be_create(hdl, be_name) != BE_ERR_SUCCESS) {
-		syslog(LOG_WARNING,
+		be_syslog(LOG_WARNING,
 		    "pkg-be-plugin: %s: be_create(\"%s\") failed: %s",
 		    hook_name, be_name, libbe_error_description(hdl));
 		pkg_plugin_error(g_plugin,
@@ -343,7 +369,7 @@ be_hook(void *data, struct pkgdb *db)
 	 * prune_old_bes() can open its own clean handle without any
 	 * concurrent handle from this side interfering.
 	 */
-	syslog(LOG_NOTICE,
+	be_syslog(LOG_NOTICE,
 	    "pkg-be-plugin: created boot environment \"%s\"", be_name);
 	pkg_emit_notice("be-plugin: created boot environment: %s", be_name);
 
@@ -357,7 +383,7 @@ done:
 		libbe_close(hdl);
 
 	if (error && g_config.strict) {
-		syslog(LOG_ERR,
+		be_syslog(LOG_ERR,
 		    "pkg-be-plugin: aborting %s transaction "
 		    "(strict mode, BE creation failed)", hook_name);
 		return (EPKG_FATAL);
@@ -377,6 +403,8 @@ done:
 int
 pkg_plugin_init(struct pkg_plugin *p)
 {
+	const pkg_object *o;
+
 	g_plugin = p;
 
 	pkg_plugin_set(p, PKG_PLUGIN_NAME, "be");
@@ -440,6 +468,13 @@ pkg_plugin_init(struct pkg_plugin *p)
 	}
 
 	/*
+	 * Mirror pkg.conf's global SYSLOG option: when the admin disables
+	 * pkg's own syslog output, the plugin stays silent too.
+	 */
+	if ((o = pkg_config_get("SYSLOG")) != NULL)
+		g_use_syslog = pkg_object_bool(o);
+
+	/*
 	 * openlog() stores its ident argument as a pointer into our .so's
 	 * text segment -- not a copy.  Call it only after all error-return
 	 * paths so that pkg_plugin_shutdown() (which calls closelog()) is
@@ -449,7 +484,8 @@ pkg_plugin_init(struct pkg_plugin *p)
 	 * library, leaving syslog's internal LogTag pointing at unmapped
 	 * memory; the next syslog call from anywhere in the process segfaults.
 	 */
-	openlog("pkg-be-plugin", LOG_PID, LOG_USER);
+	if (g_use_syslog)
+		openlog("pkg-be-plugin", LOG_PID, LOG_USER);
 
 	return (EPKG_OK);
 }

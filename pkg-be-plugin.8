@@ -92,6 +92,16 @@ pruning failures (pruning is always best-effort regardless of strict mode).
 .It LOG_ERR
 Creation failures in strict mode (transaction aborted).
 .El
+.Pp
+Logging honours the global
+.Sy SYSLOG
+option of
+.Xr pkg.conf 5 :
+when it is disabled, the plugin writes no
+.Xr syslog 3
+messages, matching the behaviour of
+.Xr pkg 8
+itself.
 .Sh CONFIGURATION
 The plugin is configured by
 .Pa /usr/local/etc/pkg/be.conf ,

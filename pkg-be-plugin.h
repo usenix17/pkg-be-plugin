@@ -29,6 +29,8 @@
 #ifndef PKG_BE_PLUGIN_H
 #define	PKG_BE_PLUGIN_H
 
+#include <sys/cdefs.h>
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <time.h>
@@ -78,5 +80,12 @@ extern struct be_config g_config;
  */
 int		pkg_plugin_init(struct pkg_plugin *);
 int		pkg_plugin_shutdown(struct pkg_plugin *);
+
+/*
+ * be_syslog: syslog(3) gated on pkg.conf's global SYSLOG option.  Defined
+ * in pkg-be-plugin.c; used by prune.c as well so all plugin logging honours
+ * the option.
+ */
+void		be_syslog(int, const char *,...)__printflike(2, 3);
 
 #endif				/* PKG_BE_PLUGIN_H */
