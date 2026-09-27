@@ -449,7 +449,7 @@ pkg_plugin_init(struct pkg_plugin *p)
 	 * library, leaving syslog's internal LogTag pointing at unmapped
 	 * memory; the next syslog call from anywhere in the process segfaults.
 	 */
-	openlog("pkg-be-plugin", LOG_PID, LOG_DAEMON);
+	openlog("pkg-be-plugin", LOG_PID, LOG_USER);
 
 	return (EPKG_OK);
 }

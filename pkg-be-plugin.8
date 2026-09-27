@@ -80,8 +80,9 @@ are never pruned regardless of count.
 All operations are logged to
 .Xr syslog 3
 under the
-.Sy daemon
-facility:
+.Sy user
+facility, matching
+.Xr pkg 8 :
 .Bl -tag -width indent
 .It LOG_NOTICE
 Successful creation and each successful pruning.
