@@ -24,7 +24,7 @@
 .\" ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 .\" POSSIBILITY OF SUCH DAMAGE.
 .\"
-.Dd May 14, 2026
+.Dd September 27, 2026
 .Dt PKG-BE-PLUGIN 8
 .Os
 .Sh NAME
@@ -121,26 +121,31 @@ as shown in the
 plugin loading must not be disabled via
 .Sy PKG_ENABLE_PLUGINS .
 .Pp
-Available configuration keys:
+The following options can be defined in
+.Pa be.conf :
 .Bl -tag -width BE_PLUGIN_SKIP_TRANSACTIONS
-.It Sy BE_PLUGIN_ENABLED : bool (default: true)
+.It Cm BE_PLUGIN_ENABLED: boolean
 Master switch.
 Set to
 .Dq false
 to load the plugin but register no hooks.
-.It Sy BE_PLUGIN_KEEP : int (default: 5)
+Default: true.
+.It Cm BE_PLUGIN_KEEP: integer
 Maximum number of automatically created boot environments to retain.
 Must be >= 1.
 Older environments beyond this limit are destroyed after each successful
 creation, subject to
-.Sy BE_PLUGIN_MIN_AGE .
+.Cm BE_PLUGIN_MIN_AGE .
 The origin snapshot created when the boot environment was cloned is reclaimed
 along with it, so pruning does not leak snapshots.
-.It Sy BE_PLUGIN_NAME_PREFIX : string (default: pre-pkg)
+Default: 5.
+.It Cm BE_PLUGIN_NAME_PREFIX: string
 Prefix for generated boot environment names.
 Must not be empty and must not exceed 63 characters; a longer value is rejected
 at load time and the plugin fails to load.
-.It Sy BE_PLUGIN_MIN_AGE : duration (default: 7d)
+Default:
+.Dq pre-pkg .
+.It Cm BE_PLUGIN_MIN_AGE: string
 Minimum age a boot environment must reach before it is eligible for pruning.
 Accepted formats: a bare integer (seconds), or an integer followed by
 .Dq d
@@ -154,14 +159,16 @@ Accepted formats: a bare integer (seconds), or an integer followed by
 Set to
 .Dq 0
 to disable the minimum-age restriction.
-.It Sy BE_PLUGIN_STRICT : bool (default: false)
+Default:
+.Dq 7d .
+.It Cm BE_PLUGIN_STRICT: boolean
 In strict mode, a failure to create a boot environment causes the plugin to
 return
 .Dv EPKG_FATAL ,
 aborting the transaction before any packages are changed.
-In non-strict mode (the default), creation failures are logged and the
-transaction proceeds.
-.It Sy BE_PLUGIN_SKIP_TRANSACTIONS : string (default: "")
+In non-strict mode, creation failures are logged and the transaction proceeds.
+Default: false.
+.It Cm BE_PLUGIN_SKIP_TRANSACTIONS: string
 Comma-separated list of transaction types to skip.
 Recognised tokens:
 .Dq install ,
@@ -171,9 +178,10 @@ Example:
 .Dq deinstall
 creates boot environments only for installs and upgrades.
 Unknown tokens produce a warning notice and are otherwise ignored.
-.It Sy BE_PLUGIN_REPOSITORIES : string (default: "")
+Default: empty.
+.It Cm BE_PLUGIN_REPOSITORIES: string
 Comma-separated list of repository names that trigger BE creation.
-If empty (the default), every transaction creates a BE regardless of origin.
+If empty, every transaction creates a BE regardless of origin.
 If set, a BE is created only when at least one package in the transaction
 originates from a listed repository.
 Repository names must match exactly as shown in
@@ -187,6 +195,8 @@ matches packages installed directly from a file via
 Example: to create BEs only for base system updates:
 .Pp
 .Dl BE_PLUGIN_REPOSITORIES = \&"FreeBSD-base\&";
+.Pp
+Default: empty.
 .El
 .Sh FILES
 .Bl -tag -width /usr/local/etc/pkg/be.conf
