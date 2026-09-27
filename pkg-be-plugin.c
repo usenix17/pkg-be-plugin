@@ -475,30 +475,27 @@ pkg_plugin_init(struct pkg_plugin *p)
 		g_use_syslog = pkg_object_bool(o);
 
 	/*
-	 * openlog() stores its ident argument as a pointer into our .so's
-	 * text segment -- not a copy.  Call it only after all error-return
-	 * paths so that pkg_plugin_shutdown() (which calls closelog()) is
-	 * guaranteed to run before the library is dlclose()'d.  Calling
-	 * openlog() on an early error-return path and then returning
-	 * EPKG_FATAL causes pkg to skip shutdown and eventually dlclose the
-	 * library, leaving syslog's internal LogTag pointing at unmapped
-	 * memory; the next syslog call from anywhere in the process segfaults.
+	 * Deliberately no openlog() here.  openlog() is process-wide: it
+	 * would hijack the ident (and, with a non-default facility, the
+	 * facility) of pkg(8)'s own syslog messages for the rest of the
+	 * process lifetime, and its stored ident pointer into this .so
+	 * becomes dangling if pkg dlclose()s the plugin without running
+	 * shutdown.  Without it, messages inherit pkg's own defaults
+	 * (LOG_USER, program-name ident); every message already carries a
+	 * "pkg-be-plugin: " prefix in its text.
 	 */
-	if (g_use_syslog)
-		openlog("pkg-be-plugin", LOG_PID, LOG_USER);
-
 	return (EPKG_OK);
 }
 
 /*
  * pkg_plugin_shutdown -- plugin entry point called by pkg(8) at unload time.
  *
- * g_config contains no heap-allocated members; nothing to free.
+ * g_config contains no heap-allocated members; nothing to free.  No
+ * closelog() either: pkg_plugin_init() does not openlog().
  */
 int
 pkg_plugin_shutdown(struct pkg_plugin *p)
 {
 	(void)p;
-	closelog();
 	return (EPKG_OK);
 }
