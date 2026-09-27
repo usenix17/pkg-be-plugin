@@ -57,17 +57,17 @@ as external processes.
 .Pp
 Boot environment names have the form:
 .Pp
-.Dl Ao prefix Ac Ns - Ns Ao YYYYMMDD Ac Ns - Ns Ao HHMMSS Ac
+.Dl Ao prefix Ac Ns - Ns Ao YYYYMMDD Ac Ns T Ns Ao HHMMSS Ac
 .Pp
 where
 .Aq prefix
 is controlled by the
 .Sy BE_PLUGIN_NAME_PREFIX
 configuration key and the timestamp is the local time at which the transaction
-began.
+began, in ISO 8601 basic format.
 For example, with the default prefix:
 .Pp
-.Dl pre-pkg-20260513-142301
+.Dl pre-pkg-20260513T142301
 .Pp
 After creating the new boot environment, the plugin prunes older automatically
 created boot environments so that at most
@@ -191,7 +191,7 @@ BE_PLUGIN_MIN_AGE = "14d";
 To find the boot environment created before the last upgrade and boot into it:
 .Bd -literal -offset indent
 grep "pkg-be-plugin: created" /var/log/messages | tail -1
-bectl activate pre-pkg-20260513-142301
+bectl activate pre-pkg-20260513T142301
 reboot
 .Ed
 .Pp

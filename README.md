@@ -80,7 +80,7 @@ the environment created before the last transaction:
 grep "pkg-be-plugin: created" /var/log/messages | tail -1
 
 # Activate it for next boot
-bectl activate pre-pkg-20260513-142301
+bectl activate pre-pkg-20260513T142301
 
 # Reboot
 reboot

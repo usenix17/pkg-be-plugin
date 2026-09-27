@@ -58,7 +58,7 @@
 /*
  * BE_NAME_LEN: maximum buffer size for a generated BE name.
  *
- * A name is: prefix (up to 63 chars) + "-" + "YYYYMMDD" + "-" + "HHMMSS"
+ * A name is: prefix (up to 63 chars) + "-" + "YYYYMMDD" + "T" + "HHMMSS"
  * That is at most 63 + 1 + 8 + 1 + 6 = 79 characters.  128 is generous.
  */
 #define	BE_NAME_LEN	128
@@ -90,8 +90,9 @@ be_hook_name(pkg_jobs_t type)
 /*
  * generate_be_name -- format a timestamped boot environment name.
  *
- * Produces: "<prefix>-YYYYMMDD-HHMMSS", e.g. "pre-pkg-20260513-142301".
- * Uses local time.  buf must be at least BE_NAME_LEN bytes.
+ * Produces: "<prefix>-YYYYMMDDTHHMMSS", e.g. "pre-pkg-20260513T142301".
+ * The timestamp is ISO 8601 basic format (local time).  buf must be at
+ * least BE_NAME_LEN bytes.
  */
 static void
 generate_be_name(const char *prefix, char *buf, size_t bufsz)
@@ -101,7 +102,7 @@ generate_be_name(const char *prefix, char *buf, size_t bufsz)
 
 	time(&now);
 	localtime_r(&now, &tm);
-	(void)snprintf(buf, bufsz, "%s-%04d%02d%02d-%02d%02d%02d",
+	(void)snprintf(buf, bufsz, "%s-%04d%02d%02dT%02d%02d%02d",
 	    prefix,
 	    tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 	    tm.tm_hour, tm.tm_min, tm.tm_sec);
