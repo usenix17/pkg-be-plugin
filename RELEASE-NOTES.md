@@ -1,3 +1,21 @@
+# pkg-be-plugin 1.0.1 -- 2026-09-27
+
+Fixes from FreeBSD ports review feedback (upstream issues #7 through #11).
+
+- Boot environment names now use the ISO 8601 basic timestamp format:
+  `pre-pkg-20260513T142301` instead of `pre-pkg-20260513-142301`. Pruning
+  matches on prefix only, so environments created by 1.0.0 are still
+  pruned normally.
+- Syslog messages are now written under the `user` facility instead of
+  `daemon`, matching pkg(8) itself.
+- Logging honours the global `SYSLOG` option of pkg.conf(5): disabling
+  pkg's syslog output silences the plugin too.
+- Corrected the manpage SYNOPSIS: the plugin must be explicitly listed
+  in pkg.conf's `PLUGINS` option; it is not loaded merely because the
+  shared object exists.
+- Restyled the manpage CONFIGURATION section to match pkg.conf(5)
+  conventions.
+
 # pkg-be-plugin 1.0.0 — 2026-05-14
 
 Initial release.

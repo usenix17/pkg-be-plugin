@@ -410,7 +410,7 @@ pkg_plugin_init(struct pkg_plugin *p)
 	pkg_plugin_set(p, PKG_PLUGIN_NAME, "be");
 	pkg_plugin_set(p, PKG_PLUGIN_DESC,
 	    "Automatically create ZFS boot environments before pkg transactions");
-	pkg_plugin_set(p, PKG_PLUGIN_VERSION, "1.0.0");
+	pkg_plugin_set(p, PKG_PLUGIN_VERSION, "1.0.1");
 
 	if (config_register_keys(p) != EPKG_OK)
 		return (EPKG_FATAL);
