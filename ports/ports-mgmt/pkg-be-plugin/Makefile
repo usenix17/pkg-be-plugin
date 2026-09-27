@@ -1,9 +1,9 @@
 PORTNAME=	pkg-be-plugin
-DISTVERSION=	1.0
+DISTVERSION=	1.0.1
 CATEGORIES=	ports-mgmt sysutils
 
 MAINTAINER=	sasha@starnix.net
-COMMENT=	Pkg(8) plugin to auto-create ZFS boot environments
+COMMENT=	Plugin for pkg(8) to auto-create ZFS boot environments
 WWW=		https://github.com/usenix17/pkg-be-plugin
 
 LICENSE=	BSD2CLAUSE
@@ -14,16 +14,19 @@ LIB_DEPENDS=	libpkg.so:ports-mgmt/pkg
 USES=		uidfix
 USE_GITHUB=	yes
 GH_ACCOUNT=	usenix17
-GH_TAGNAME=	${DISTVERSION}
 
+NO_TEST=	yes
 SUB_FILES=	pkg-message
 
 PLIST_FILES=	lib/pkg/be.so \
 		"@sample etc/pkg/be.conf.sample" \
 		share/man/man8/pkg-be-plugin.8.gz
+PORTDOCS=	README.md RELEASE-NOTES.md
 
 OPTIONS_DEFINE=	DOCS
-PORTDOCS=	README.md design.md
+
+post-patch:
+	${REINPLACE_CMD} -e 's#/usr/local#${PREFIX}#' ${WRKSRC}/pkg-be-plugin.8
 
 pre-install:
 	@${MKDIR} ${STAGEDIR}${PREFIX}/lib/pkg
@@ -38,6 +41,6 @@ post-install:
 post-install-DOCS-on:
 	@${MKDIR} ${STAGEDIR}${DOCSDIR}
 	${INSTALL_DATA} ${WRKSRC}/README.md ${STAGEDIR}${DOCSDIR}
-	${INSTALL_DATA} ${WRKSRC}/design.md ${STAGEDIR}${DOCSDIR}
+	${INSTALL_DATA} ${WRKSRC}/RELEASE-NOTES.md ${STAGEDIR}${DOCSDIR}
 
 .include <bsd.port.mk>
