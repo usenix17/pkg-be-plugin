@@ -31,12 +31,16 @@
 .Nm pkg-be-plugin
 .Nd automatically create ZFS boot environments before pkg transactions
 .Sh SYNOPSIS
-The plugin is loaded automatically by
+The plugin is loaded by
 .Xr pkg 8
-when
-.Pa /usr/local/lib/pkg/be.so
-exists and plugins are enabled.
-No explicit invocation is needed.
+when it is explicitly listed in the
+.Sy PLUGINS
+option of
+.Xr pkg.conf 5 :
+.Pp
+.Dl PLUGINS [ \&"be\&" ];
+.Pp
+No explicit invocation is needed beyond that.
 .Sh DESCRIPTION
 .Nm
 is a
@@ -108,12 +112,14 @@ The plugin is configured by
 a UCL file.
 A missing file is not an error; compiled-in defaults are used.
 .Pp
-To enable plugins globally, set
-.Dq Sy PLUGINS_CONF_DIR
-and
-.Dq Sy PLUGINS = [ be ]
-in
-.Xr pkg.conf 5 .
+To load the plugin, list it in the
+.Sy PLUGINS
+option of
+.Xr pkg.conf 5
+as shown in the
+.Sx SYNOPSIS ;
+plugin loading must not be disabled via
+.Sy PKG_ENABLE_PLUGINS .
 .Pp
 Available configuration keys:
 .Bl -tag -width BE_PLUGIN_SKIP_TRANSACTIONS
