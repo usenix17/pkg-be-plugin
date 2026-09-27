@@ -31,11 +31,11 @@ This installs:
 - `/usr/local/lib/pkg/be.so` — the plugin shared object
 - `/usr/local/man/man8/pkg-be-plugin.8` — the manual page
 
-Enable the plugin in `/usr/local/etc/pkg.conf`:
+pkg(8) loads only plugins that are explicitly enabled. Add the plugin to
+`/usr/local/etc/pkg.conf`:
 
 ```ucl
-PLUGINS_CONF_DIR = "/usr/local/etc/pkg";
-PLUGINS [ be ];
+PLUGINS [ "be" ];
 ```
 
 ## Configuration
@@ -80,7 +80,7 @@ the environment created before the last transaction:
 grep "pkg-be-plugin: created" /var/log/messages | tail -1
 
 # Activate it for next boot
-bectl activate pre-pkg-20260513-142301
+bectl activate pre-pkg-20260513T142301
 
 # Reboot
 reboot

@@ -44,6 +44,7 @@
 
 #include <time.h>
 #include <syslog.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -58,13 +59,38 @@
 /*
  * BE_NAME_LEN: maximum buffer size for a generated BE name.
  *
- * A name is: prefix (up to 63 chars) + "-" + "YYYYMMDD" + "-" + "HHMMSS"
+ * A name is: prefix (up to 63 chars) + "-" + "YYYYMMDD" + "T" + "HHMMSS"
  * That is at most 63 + 1 + 8 + 1 + 6 = 79 characters.  128 is generous.
  */
 #define	BE_NAME_LEN	128
 
 struct pkg_plugin *g_plugin;
 struct be_config g_config;
+
+/*
+ * g_use_syslog mirrors pkg.conf's global SYSLOG option so the plugin logs
+ * if and only if pkg itself does.  Read once in pkg_plugin_init().
+ */
+static bool	g_use_syslog = true;
+
+/*
+ * be_syslog -- syslog(3) gated on pkg.conf's SYSLOG option.
+ *
+ * All syslog output from the plugin (this file and prune.c) goes through
+ * here so that disabling SYSLOG in pkg.conf silences the plugin exactly
+ * like it silences pkg(8).
+ */
+void
+be_syslog(int priority, const char *fmt,...)
+{
+	va_list		ap;
+
+	if (!g_use_syslog)
+		return;
+	va_start(ap, fmt);
+	vsyslog(priority, fmt, ap);
+	va_end(ap);
+}
 
 /*
  * be_hook_name -- return a human-readable label for a transaction type.
@@ -90,8 +116,9 @@ be_hook_name(pkg_jobs_t type)
 /*
  * generate_be_name -- format a timestamped boot environment name.
  *
- * Produces: "<prefix>-YYYYMMDD-HHMMSS", e.g. "pre-pkg-20260513-142301".
- * Uses local time.  buf must be at least BE_NAME_LEN bytes.
+ * Produces: "<prefix>-YYYYMMDDTHHMMSS", e.g. "pre-pkg-20260513T142301".
+ * The timestamp is ISO 8601 basic format (local time).  buf must be at
+ * least BE_NAME_LEN bytes.
  */
 static void
 generate_be_name(const char *prefix, char *buf, size_t bufsz)
@@ -101,7 +128,7 @@ generate_be_name(const char *prefix, char *buf, size_t bufsz)
 
 	time(&now);
 	localtime_r(&now, &tm);
-	(void)snprintf(buf, bufsz, "%s-%04d%02d%02d-%02d%02d%02d",
+	(void)snprintf(buf, bufsz, "%s-%04d%02d%02dT%02d%02d%02d",
 	    prefix,
 	    tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 	    tm.tm_hour, tm.tm_min, tm.tm_sec);
@@ -287,7 +314,7 @@ be_hook(void *data, struct pkgdb *db)
 		 * boot environment (e.g. UFS root, or a restricted jail).
 		 * This is the most common runtime failure in non-ZFS-BE setups.
 		 */
-		syslog(LOG_WARNING,
+		be_syslog(LOG_WARNING,
 		    "pkg-be-plugin: %s: libbe_init failed: "
 		    "not a ZFS boot environment system", hook_name);
 		pkg_plugin_error(g_plugin,
@@ -309,7 +336,7 @@ be_hook(void *data, struct pkgdb *db)
 	 * libbe_error_description() is not useful here.
 	 */
 	if (be_validate_name(hdl, be_name) != BE_ERR_SUCCESS) {
-		syslog(LOG_WARNING,
+		be_syslog(LOG_WARNING,
 		    "pkg-be-plugin: %s: invalid BE name \"%s\"",
 		    hook_name, be_name);
 		pkg_plugin_error(g_plugin,
@@ -327,7 +354,7 @@ be_hook(void *data, struct pkgdb *db)
 	disambiguate_be_name(hdl, be_name, sizeof(be_name));
 
 	if (be_create(hdl, be_name) != BE_ERR_SUCCESS) {
-		syslog(LOG_WARNING,
+		be_syslog(LOG_WARNING,
 		    "pkg-be-plugin: %s: be_create(\"%s\") failed: %s",
 		    hook_name, be_name, libbe_error_description(hdl));
 		pkg_plugin_error(g_plugin,
@@ -342,7 +369,7 @@ be_hook(void *data, struct pkgdb *db)
 	 * prune_old_bes() can open its own clean handle without any
 	 * concurrent handle from this side interfering.
 	 */
-	syslog(LOG_NOTICE,
+	be_syslog(LOG_NOTICE,
 	    "pkg-be-plugin: created boot environment \"%s\"", be_name);
 	pkg_emit_notice("be-plugin: created boot environment: %s", be_name);
 
@@ -356,7 +383,7 @@ done:
 		libbe_close(hdl);
 
 	if (error && g_config.strict) {
-		syslog(LOG_ERR,
+		be_syslog(LOG_ERR,
 		    "pkg-be-plugin: aborting %s transaction "
 		    "(strict mode, BE creation failed)", hook_name);
 		return (EPKG_FATAL);
@@ -376,12 +403,14 @@ done:
 int
 pkg_plugin_init(struct pkg_plugin *p)
 {
+	const pkg_object *o;
+
 	g_plugin = p;
 
 	pkg_plugin_set(p, PKG_PLUGIN_NAME, "be");
 	pkg_plugin_set(p, PKG_PLUGIN_DESC,
 	    "Automatically create ZFS boot environments before pkg transactions");
-	pkg_plugin_set(p, PKG_PLUGIN_VERSION, "1.0.0");
+	pkg_plugin_set(p, PKG_PLUGIN_VERSION, "1.0.1");
 
 	if (config_register_keys(p) != EPKG_OK)
 		return (EPKG_FATAL);
@@ -439,29 +468,34 @@ pkg_plugin_init(struct pkg_plugin *p)
 	}
 
 	/*
-	 * openlog() stores its ident argument as a pointer into our .so's
-	 * text segment -- not a copy.  Call it only after all error-return
-	 * paths so that pkg_plugin_shutdown() (which calls closelog()) is
-	 * guaranteed to run before the library is dlclose()'d.  Calling
-	 * openlog() on an early error-return path and then returning
-	 * EPKG_FATAL causes pkg to skip shutdown and eventually dlclose the
-	 * library, leaving syslog's internal LogTag pointing at unmapped
-	 * memory; the next syslog call from anywhere in the process segfaults.
+	 * Mirror pkg.conf's global SYSLOG option: when the admin disables
+	 * pkg's own syslog output, the plugin stays silent too.
 	 */
-	openlog("pkg-be-plugin", LOG_PID, LOG_DAEMON);
+	if ((o = pkg_config_get("SYSLOG")) != NULL)
+		g_use_syslog = pkg_object_bool(o);
 
+	/*
+	 * Deliberately no openlog() here.  openlog() is process-wide: it
+	 * would hijack the ident (and, with a non-default facility, the
+	 * facility) of pkg(8)'s own syslog messages for the rest of the
+	 * process lifetime, and its stored ident pointer into this .so
+	 * becomes dangling if pkg dlclose()s the plugin without running
+	 * shutdown.  Without it, messages inherit pkg's own defaults
+	 * (LOG_USER, program-name ident); every message already carries a
+	 * "pkg-be-plugin: " prefix in its text.
+	 */
 	return (EPKG_OK);
 }
 
 /*
  * pkg_plugin_shutdown -- plugin entry point called by pkg(8) at unload time.
  *
- * g_config contains no heap-allocated members; nothing to free.
+ * g_config contains no heap-allocated members; nothing to free.  No
+ * closelog() either: pkg_plugin_init() does not openlog().
  */
 int
 pkg_plugin_shutdown(struct pkg_plugin *p)
 {
 	(void)p;
-	closelog();
 	return (EPKG_OK);
 }

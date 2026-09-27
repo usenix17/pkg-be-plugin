@@ -180,7 +180,7 @@ ATF_TC_HEAD(prefix_match_basic, tc)
 }
 ATF_TC_BODY(prefix_match_basic, tc)
 {
-	ATF_REQUIRE(be_name_matches_prefix("pre-pkg-20260513-142301",
+	ATF_REQUIRE(be_name_matches_prefix("pre-pkg-20260513T142301",
 	    "pre-pkg"));
 }
 
@@ -205,7 +205,7 @@ ATF_TC_HEAD(prefix_match_wrong_prefix, tc)
 }
 ATF_TC_BODY(prefix_match_wrong_prefix, tc)
 {
-	ATF_REQUIRE(!be_name_matches_prefix("pre-pkg-20260513-142301",
+	ATF_REQUIRE(!be_name_matches_prefix("pre-pkg-20260513T142301",
 	    "other"));
 }
 
@@ -239,19 +239,19 @@ ATF_TC_HEAD(prefix_match_partial_word, tc)
 ATF_TC_BODY(prefix_match_partial_word, tc)
 {
 	/*
-	 * prefix="pre", name="pre-20260513-142301".
+	 * prefix="pre", name="pre-20260513T142301".
 	 * name[3] == '-', so this should match.
 	 */
-	ATF_REQUIRE(be_name_matches_prefix("pre-20260513-142301", "pre"));
+	ATF_REQUIRE(be_name_matches_prefix("pre-20260513T142301", "pre"));
 
 	/*
-	 * prefix="pre-pkg", name="pre-pkg-extra-20260513-142301".
+	 * prefix="pre-pkg", name="pre-pkg-extra-20260513T142301".
 	 * A user BE named "pre-pkg-extra" happens to start with our prefix.
 	 * name[7] == '-', so this matches too -- intentional: we manage any
 	 * BE whose name starts with "<prefix>-".
 	 */
 	ATF_REQUIRE(be_name_matches_prefix(
-	    "pre-pkg-extra-20260513-142301", "pre-pkg"));
+	    "pre-pkg-extra-20260513T142301", "pre-pkg"));
 }
 
 ATF_TC(prefix_match_empty_name);

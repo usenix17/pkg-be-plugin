@@ -43,7 +43,7 @@
 
 #include "be_naming.h"
 
-#define	BASE	"pre-pkg-20260513-142301"
+#define	BASE	"pre-pkg-20260513T142301"
 
 /*
  * taken_fixture -- a NULL-terminated list of names considered "taken",
